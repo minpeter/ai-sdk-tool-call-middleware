@@ -440,4 +440,242 @@ describe("wrapStream debugSummary parity with wrapGenerate", () => {
       { toolName: "get_weather", input: '{"city":"Seoul"}' },
     ]);
   });
+
+  it("does not fail wrapGenerate or wrapStream when both extractToolCallSegments and onError throw", async () => {
+    const throwingProtocol: TCMProtocol = {
+      ...hermesProtocol(),
+      extractToolCallSegments() {
+        throw new Error("extractor exploded");
+      },
+    };
+    const throwingOnError = vi.fn(() => {
+      throw new Error("onError exploded");
+    });
+    const rawToolCall =
+      '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool_call>';
+    const generateSummary: ToolCallMiddlewareDebugSummary = {};
+    const streamSummary: ToolCallMiddlewareDebugSummary = {};
+
+    const genResult = await wrapGenerate({
+      protocol: throwingProtocol,
+      doGenerate: () =>
+        Promise.resolve({
+          content: [{ type: "text", text: rawToolCall }],
+          finishReason: { unified: "stop", raw: "stop" },
+          usage: {
+            inputTokens: {
+              total: 1,
+              noCache: undefined,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: {
+              total: 1,
+              text: undefined,
+              reasoning: undefined,
+            },
+          },
+          warnings: [],
+        }),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary: generateSummary,
+            onError: throwingOnError,
+            _internal: {
+              originalTools: encodeOriginalTools(weatherTools),
+            },
+          },
+        },
+      },
+    });
+    expect(genResult.content.some((part) => part.type === "tool-call")).toBe(
+      true
+    );
+    expect(generateSummary.originalText).toBe("");
+
+    const { stream } = await wrapStream({
+      protocol: throwingProtocol,
+      doGenerate: () => Promise.reject(new Error("not used")),
+      doStream: () =>
+        Promise.resolve({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              controller.enqueue({ type: "text-start", id: "t1" });
+              controller.enqueue({
+                type: "text-delta",
+                id: "t1",
+                delta: rawToolCall,
+              });
+              controller.enqueue({ type: "text-end", id: "t1" });
+              controller.enqueue({
+                type: "finish",
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                  inputTokens: {
+                    total: 1,
+                    noCache: undefined,
+                    cacheRead: undefined,
+                    cacheWrite: undefined,
+                  },
+                  outputTokens: {
+                    total: 1,
+                    text: undefined,
+                    reasoning: undefined,
+                  },
+                },
+              });
+              controller.close();
+            },
+          }),
+        }),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary: streamSummary,
+            onError: throwingOnError,
+            _internal: {
+              originalTools: encodeOriginalTools(weatherTools),
+            },
+          },
+        },
+      },
+    });
+    const parts = await drainStream(stream);
+    expect(parts.some((part) => part.type === "tool-call")).toBe(true);
+    expect(parts.at(-1)?.type).toBe("finish");
+    expect(throwingOnError).toHaveBeenCalledTimes(2);
+    expect(streamSummary).toEqual(generateSummary);
+  });
+
+  it("preserves per-ID block grouping for interleaved open stream text blocks", async () => {
+    const observedTexts: string[] = [];
+    const base = hermesProtocol();
+    const protocol: TCMProtocol = {
+      ...base,
+      extractToolCallSegments({ text, tools }) {
+        observedTexts.push(text);
+        return base.extractToolCallSegments?.({ text, tools }) ?? [];
+      },
+    };
+    const debugSummary: ToolCallMiddlewareDebugSummary = {};
+
+    const { stream } = await wrapStream({
+      protocol,
+      doGenerate: () => Promise.reject(new Error("not used")),
+      doStream: () =>
+        Promise.resolve({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              controller.enqueue({ type: "text-start", id: "a" });
+              controller.enqueue({ type: "text-delta", id: "a", delta: "A1" });
+              controller.enqueue({ type: "text-start", id: "b" });
+              controller.enqueue({ type: "text-delta", id: "b", delta: "B1" });
+              controller.enqueue({ type: "text-delta", id: "a", delta: "A2" });
+              controller.enqueue({ type: "text-end", id: "a" });
+              controller.enqueue({ type: "text-delta", id: "b", delta: "B2" });
+              controller.enqueue({ type: "text-end", id: "b" });
+              controller.enqueue({
+                type: "finish",
+                finishReason: { unified: "stop", raw: "stop" },
+                usage: {
+                  inputTokens: {
+                    total: 1,
+                    noCache: undefined,
+                    cacheRead: undefined,
+                    cacheWrite: undefined,
+                  },
+                  outputTokens: {
+                    total: 1,
+                    text: undefined,
+                    reasoning: undefined,
+                  },
+                },
+              });
+              controller.close();
+            },
+          }),
+        }),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary,
+            _internal: {
+              originalTools: encodeOriginalTools(weatherTools),
+            },
+          },
+        },
+      },
+    });
+
+    await drainStream(stream);
+    expect(observedTexts).toEqual(["A1A2\n\nB1B2"]);
+  });
+
+  it("clears reused debugSummary when toolChoice is none in both wrapGenerate and wrapStream", async () => {
+    const generateSummary: ToolCallMiddlewareDebugSummary = {
+      originalText: "stale-gen",
+      toolCalls: '[{"toolName":"stale","input":"{}"}]',
+    };
+    const streamSummary: ToolCallMiddlewareDebugSummary = {
+      originalText: "stale-stream",
+      toolCalls: '[{"toolName":"stale","input":"{}"}]',
+    };
+
+    await wrapGenerate({
+      protocol: hermesProtocol(),
+      doGenerate: () =>
+        Promise.resolve({
+          content: [{ type: "text", text: "plain" }],
+          finishReason: { unified: "stop", raw: "stop" },
+          usage: {
+            inputTokens: {
+              total: 1,
+              noCache: undefined,
+              cacheRead: undefined,
+              cacheWrite: undefined,
+            },
+            outputTokens: {
+              total: 1,
+              text: undefined,
+              reasoning: undefined,
+            },
+          },
+          warnings: [],
+        }),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary: generateSummary,
+            _internal: { toolChoice: { type: "none" } },
+          },
+        },
+      },
+    });
+
+    const { stream } = await wrapStream({
+      protocol: hermesProtocol(),
+      doGenerate: () => Promise.reject(new Error("not used")),
+      doStream: () =>
+        Promise.resolve({
+          stream: new ReadableStream<LanguageModelV4StreamPart>({
+            start(controller) {
+              controller.close();
+            },
+          }),
+        }),
+      params: {
+        providerOptions: {
+          toolCallMiddleware: {
+            debugSummary: streamSummary,
+            _internal: { toolChoice: { type: "none" } },
+          },
+        },
+      },
+    });
+    await drainStream(stream);
+
+    expect(generateSummary).toEqual({ originalText: "", toolCalls: "[]" });
+    expect(streamSummary).toEqual(generateSummary);
+  });
 });

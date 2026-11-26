@@ -14,6 +14,22 @@ export interface ToolCallMiddlewareDebugSummary {
   toolCalls?: string; // JSON string of array of { toolName, input }
 }
 
+/**
+ * Clear stale summary fields when a request bypasses tool-call parsing
+ * (such as `toolChoice: "none"`).
+ *
+ * @internal
+ */
+export function resetDebugSummary(
+  debugSummary: ToolCallMiddlewareDebugSummary | undefined
+): void {
+  if (!debugSummary) {
+    return;
+  }
+  debugSummary.originalText = "";
+  debugSummary.toolCalls = "[]";
+}
+
 export function recordForcedToolChoiceDebugSummary(options: {
   debugSummary: ToolCallMiddlewareDebugSummary | undefined;
   originText: string;
@@ -66,9 +82,13 @@ export function recordParsedDebugSummary(options: {
     try {
       segments = extractToolCallSegments({ text: allText, tools }) ?? [];
     } catch (error) {
-      onError?.("Failed to extract tool call segments for debug summary.", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      try {
+        onError?.("Failed to extract tool call segments for debug summary.", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } catch {
+        // Diagnostics error reporting must never fail a completed response.
+      }
     }
   }
   const originalText = safeToolCallMetadataText(segments.join("\n\n")) ?? "";

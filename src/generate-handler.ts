@@ -15,6 +15,7 @@ import {
 import {
   recordForcedToolChoiceDebugSummary,
   recordParsedDebugSummary,
+  resetDebugSummary,
 } from "./core/utils/diagnostics/debug-summary";
 import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
 import { generateToolCallId } from "./core/utils/primitives/id";
@@ -167,9 +168,9 @@ function parseTextContent(options: {
   }
 
   if (
-    protocol.allowsFallbackRecovery?.(text) === false ||
     (typeof text === "string" &&
-      protocol.isDefinitelyPlainGeneratedText?.(text) === true)
+      protocol.isDefinitelyPlainGeneratedText?.(text) === true) ||
+    protocol.allowsFallbackRecovery?.(text) === false
   ) {
     return parsedByProtocol;
   }
@@ -204,7 +205,8 @@ export async function wrapGenerate({
 }) {
   if (isToolChoiceNone(params)) {
     // toolChoice 'none': no tool prompt was injected and no tool calls are
-    // expected, so return the model result untouched.
+    // expected, so reset any reused debugSummary and return the result untouched.
+    resetDebugSummary(params.providerOptions?.toolCallMiddleware?.debugSummary);
     return doGenerate();
   }
 

@@ -13,7 +13,7 @@ This package is ESM-only. Use `import` or dynamic `import()`; CommonJS
 ## Install
 
 ```bash
-# Current stable line (v6.x) — built for AI SDK v7
+# Built for AI SDK v7 (current npm `latest` is v5.x; v6.x is the upcoming major release on this branch)
 pnpm add @ai-sdk-tool/parser
 ```
 
@@ -33,8 +33,8 @@ Fact-checked from this repo `CHANGELOG.md` and npm release metadata.
 | `v2.x` | `v5.x` | Legacy (not actively maintained) |
 | `v3.x` | `v6.x` | Legacy (not actively maintained) |
 | `v4.x` | `v6.x` | Previous AI SDK v6 line |
-| `v5.x` | `v7.x` | Previous AI SDK v7 line |
-| `v6.x` | `v7.x` | Active (current `latest` line) |
+| `v5.x` | `v7.x` | Current npm `latest` line |
+| `v6.x` | `v7.x` | Upcoming major release (this branch) |
 
 Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
 
@@ -51,7 +51,9 @@ Note: there is no separate formal EOL announcement in releases/changelog for `v1
 | `historyMode: "converted-text"` + `toolResponsePromptTemplate` | `historyStrategy: { mode: "converted-text", toolResponsePromptTemplate }` |
 | `historyMode: "provider-native"` | `historyStrategy: { mode: "provider-native" }` |
 | `allowsGeneratedTextJsonRecovery` on custom protocols | `allowsFallbackRecovery` on `TCMProtocol` |
-| Legacy aliases (`TCMCoreProtocol`, `isTCMProtocolFactory`, `Qwen3CoderToolParser`, `uiTarsXmlProtocol`, `KExaone2ToolParser`, `KExaone236BToolParser`) | `TCMProtocol`, `isProtocolFactory`, `qwen3CoderProtocol`, `kExaone2Protocol`, `kExaone236BProtocol` |
+| `TCMCoreProtocol`, `isTCMProtocolFactory` | `TCMProtocol`, `isProtocolFactory` |
+| `Qwen3CoderToolParser`, `uiTarsXmlProtocol` | `qwen3CoderProtocol` (and `uiTarsToolMiddleware` from `@ai-sdk-tool/parser/community`) |
+| `KExaone2ToolParser`, `KExaone236BToolParser` | `kExaone2Protocol`, `kExaone236BProtocol` |
 
 - **Unified `transformParams` default placement:** direct calls to `transformParams` now default `placement` to `DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT` (`"last"`), matching `createToolMiddleware` (previously `"first"`). Pass `placement: "first"` explicitly if you relied on the old default.
 - **Transport isolation:** middleware-managed transport metadata lives under internal `_internal` state populated by `transformParams` and is stripped before calling the underlying provider model or protocol parser.
@@ -135,7 +137,7 @@ Only `http:` / `https:` file URLs are forwarded as model file parts; other schem
 
 User-message images are unchanged — they pass through as-is.
 
-**Status:** `v6.x` is the current stable release line for AI SDK v7. Pin an exact version if you need reproducible installs.
+**Status:** `v6.x` is the upcoming major release line for AI SDK v7 (current npm `latest` is `v5.x`). Pin an exact version if you need reproducible installs.
 
 ## Package map
 
@@ -287,7 +289,7 @@ This remains prompt-only middleware. AI SDK function definitions are rendered
 into that system turn and the transformed provider request always contains
 `tools: []` and no `toolChoice`. The provider returns ordinary generated text;
 the middleware parses GLM's `<tool_call>` text back into AI SDK tool-call parts.
-There is no provider-native or hybrid GLM transport in this package.
+There is no provider-native tool-calling transport in this package.
 
 ```ts
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";

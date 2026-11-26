@@ -17,6 +17,7 @@ import {
 import {
   recordForcedToolChoiceDebugSummary,
   recordParsedDebugSummary,
+  resetDebugSummary,
 } from "./core/utils/diagnostics/debug-summary";
 import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
 import { generateToolCallId } from "./core/utils/primitives/id";
@@ -48,25 +49,51 @@ import {
 
 function createRawTextBlockTracker() {
   const blocks: string[][] = [];
-  let activeBlock: string[] | null = null;
+  const openBlocksById = new Map<string, string[]>();
+  let anonymousBlock: string[] | null = null;
+
+  const getOrCreateBlock = (id: string | null): string[] => {
+    if (id !== null) {
+      const existing = openBlocksById.get(id);
+      if (existing) {
+        return existing;
+      }
+      const created: string[] = [];
+      blocks.push(created);
+      openBlocksById.set(id, created);
+      return created;
+    }
+    if (!anonymousBlock) {
+      anonymousBlock = [];
+      blocks.push(anonymousBlock);
+    }
+    return anonymousBlock;
+  };
 
   return {
     record(part: LanguageModelV4StreamPart): void {
       if (part.type === "text-start") {
-        activeBlock = [];
-        blocks.push(activeBlock);
+        const block: string[] = [];
+        blocks.push(block);
+        if (typeof part.id === "string" && part.id.length > 0) {
+          openBlocksById.set(part.id, block);
+        } else {
+          anonymousBlock = block;
+        }
         return;
       }
       if (part.type === "text-delta") {
-        if (!activeBlock) {
-          activeBlock = [];
-          blocks.push(activeBlock);
-        }
-        activeBlock.push(part.delta);
+        const id =
+          typeof part.id === "string" && part.id.length > 0 ? part.id : null;
+        getOrCreateBlock(id).push(part.delta);
         return;
       }
       if (part.type === "text-end") {
-        activeBlock = null;
+        if (typeof part.id === "string" && part.id.length > 0) {
+          openBlocksById.delete(part.id);
+        } else {
+          anonymousBlock = null;
+        }
       }
     },
     joinBlocks(): string {
@@ -90,7 +117,8 @@ export async function wrapStream({
 }) {
   if (isToolChoiceNone(params)) {
     // toolChoice 'none': no tool prompt was injected and no tool calls are
-    // expected, so pass the model stream through untouched.
+    // expected, so reset any reused debugSummary and pass the stream through.
+    resetDebugSummary(params.providerOptions?.toolCallMiddleware?.debugSummary);
     return doStream();
   }
 

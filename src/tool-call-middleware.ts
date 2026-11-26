@@ -30,14 +30,18 @@ export function createToolMiddleware({
     specificationVersion: "v4",
     wrapStream: ({ doStream, doGenerate, params, model }) => {
       const providerParams = stripToolCallMiddlewareProviderOptions(params);
+      // Only invoke `model` directly when stripping actually removed
+      // `toolCallMiddleware` so callers passing an instrumented thunk without
+      // middleware options are not bypassed.
+      const didStrip = providerParams !== params;
       return wrapStreamHandler({
         protocol: resolvedProtocol,
         doStream:
-          typeof model?.doStream === "function"
+          didStrip && typeof model?.doStream === "function"
             ? () => model.doStream(providerParams)
             : doStream,
         doGenerate:
-          typeof model?.doGenerate === "function"
+          didStrip && typeof model?.doGenerate === "function"
             ? () => model.doGenerate(providerParams)
             : doGenerate,
         params,
@@ -45,10 +49,11 @@ export function createToolMiddleware({
     },
     wrapGenerate: ({ doGenerate, params, model }) => {
       const providerParams = stripToolCallMiddlewareProviderOptions(params);
+      const didStrip = providerParams !== params;
       return wrapGenerateHandler({
         protocol: resolvedProtocol,
         doGenerate:
-          typeof model?.doGenerate === "function"
+          didStrip && typeof model?.doGenerate === "function"
             ? () => model.doGenerate(providerParams)
             : doGenerate,
         params,

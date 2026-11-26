@@ -19,6 +19,8 @@ export type { ToolCallMiddlewareDebugSummary } from "../diagnostics/debug-summar
  * Caller-facing configuration supplied via `providerOptions.toolCallMiddleware`.
  */
 export interface ToolCallMiddlewareUserOptions {
+  /** @internal */
+  _internal?: ToolCallMiddlewareInternalState;
   debugSummary?: ToolCallMiddlewareDebugSummary;
   emitRawToolCallTextOnError?: boolean;
   onError?: OnErrorFn;
@@ -38,10 +40,7 @@ export interface ToolCallMiddlewareInternalState {
 }
 
 export interface ToolCallMiddlewareProviderOptions {
-  toolCallMiddleware?: ToolCallMiddlewareUserOptions & {
-    /** @internal */
-    _internal?: ToolCallMiddlewareInternalState;
-  };
+  toolCallMiddleware?: ToolCallMiddlewareUserOptions;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,8 +163,8 @@ export function mergeMiddlewareInternalState(
 }
 
 /**
- * Names of provider tools dropped by transformParams, so the wrap handlers
- * can surface a spec warning instead of discarding them silently.
+ * Names of provider tools dropped by `transformParams`, read from
+ * middleware-produced `providerOptions` so wrap handlers can surface warnings.
  */
 export function getDroppedProviderTools(providerOptions: unknown): string[] {
   const dropped = getMiddlewareInternalState(providerOptions)
@@ -234,6 +233,10 @@ export function decodeOriginalToolsForMiddleware(
   );
 }
 
+/**
+ * Decode original function tool schemas from `transformParams`-produced
+ * `providerOptions` into fresh, caller-mutable tool objects.
+ */
 export function decodeOriginalToolsFromProviderOptions(
   providerOptions: ToolCallMiddlewareProviderOptions | undefined,
   options?: DecodeOriginalToolsOptions
@@ -255,6 +258,10 @@ export function extractToolNamesFromOriginalTools(
   return originalTools?.map((t) => t.name) || [];
 }
 
+/**
+ * Returns true when `transformParams`-produced `providerOptions` mark an
+ * active forced `toolChoice` (`"tool"` or `"required"`).
+ */
 export function isToolChoiceActive(params: {
   providerOptions?: ToolCallMiddlewareProviderOptions;
 }): boolean {
@@ -266,6 +273,10 @@ export function isToolChoiceActive(params: {
   );
 }
 
+/**
+ * Returns true when `transformParams`-produced `providerOptions` mark
+ * `toolChoice: "none"`.
+ */
 export function isToolChoiceNone(params: {
   providerOptions?: ToolCallMiddlewareProviderOptions;
 }): boolean {

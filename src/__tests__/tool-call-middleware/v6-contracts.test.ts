@@ -308,6 +308,69 @@ describe("v6 architecture & isolation contracts", () => {
     ]);
   });
 
+  it("preserves custom doGenerate and doStream thunks when no toolCallMiddleware options need stripping", async () => {
+    const middleware = createToolMiddleware({
+      protocol: hermesProtocol,
+      promptStrategy: {
+        mode: "text",
+        template: (tools) => `Tools: ${tools.map((t) => t.name).join(",")}`,
+      },
+    });
+    const modelDoGenerate = vi.fn(() => Promise.reject(new Error("bypassed")));
+    const modelDoStream = vi.fn(() => Promise.reject(new Error("bypassed")));
+    const customDoGenerate = vi.fn(() =>
+      Promise.resolve({
+        content: [{ type: "text" as const, text: "ok" }],
+        finishReason: { unified: "stop" as const, raw: "stop" },
+        usage: ZERO_USAGE,
+        warnings: [],
+      })
+    );
+    const customDoStream = vi.fn(() =>
+      Promise.resolve({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
+          start(controller) {
+            controller.close();
+          },
+        }),
+      })
+    );
+    const model: LanguageModelV4 = {
+      specificationVersion: "v4",
+      provider: "test",
+      modelId: "test",
+      supportedUrls: {},
+      doGenerate: modelDoGenerate,
+      doStream: modelDoStream,
+    };
+
+    const params: LanguageModelV4CallOptions = {
+      prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+      providerOptions: { openai: { user: "u1" } },
+    };
+
+    await middleware.wrapGenerate?.({
+      doGenerate: customDoGenerate,
+      doStream: customDoStream,
+      params,
+      model,
+    });
+    const streamRes = await middleware.wrapStream?.({
+      doGenerate: customDoGenerate,
+      doStream: customDoStream,
+      params,
+      model,
+    });
+    if (streamRes) {
+      await drainStream(streamRes.stream);
+    }
+
+    expect(customDoGenerate).toHaveBeenCalledTimes(1);
+    expect(customDoStream).toHaveBeenCalledTimes(1);
+    expect(modelDoGenerate).not.toHaveBeenCalled();
+    expect(modelDoStream).not.toHaveBeenCalled();
+  });
+
   it("never bypasses custom parseGeneratedText when spreading glm5Protocol", async () => {
     const customParse = vi.fn(
       ({ text }: { text: string }): LanguageModelV4Content[] => [
