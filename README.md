@@ -13,11 +13,14 @@ This package is ESM-only. Use `import` or dynamic `import()`; CommonJS
 ## Install
 
 ```bash
-# Current stable line (v5.x) — built for AI SDK v7
+# Current stable npm `latest` line (v5.x) — built for AI SDK v7
 pnpm add @ai-sdk-tool/parser
+
+# v6 release candidate (`6.0.0-rc.x`, `rc` dist-tag) — built for AI SDK v7
+pnpm add @ai-sdk-tool/parser@rc
 ```
 
-If you still need the AI SDK v6 line, pin the previous major:
+If you still need the AI SDK v6 line, pin `v4`:
 
 ```bash
 pnpm add @ai-sdk-tool/parser@4
@@ -25,21 +28,61 @@ pnpm add @ai-sdk-tool/parser@4
 
 ## AI SDK compatibility
 
-Fact-checked from this repo `CHANGELOG.md` and npm release metadata (as of 2026-06-25).
+Fact-checked from this repo `CHANGELOG.md` and npm release metadata.
 
 | `@ai-sdk-tool/parser` major | AI SDK major | Maintenance status |
 |---|---|---|
 | `v1.x` | `v4.x` | Legacy (not actively maintained) |
 | `v2.x` | `v5.x` | Legacy (not actively maintained) |
 | `v3.x` | `v6.x` | Legacy (not actively maintained) |
-| `v4.x` | `v6.x` | Previous stable line |
-| `v5.x` | `v7.x` | Active (current `latest` line) |
+| `v4.x` | `v6.x` | Previous AI SDK v6 line |
+| `v5.x` | `v7.x` | Current npm `latest` line |
+| `v6.x` (`@rc`) | `v7.x` | Release candidate (`6.0.0-rc.x`, `rc` dist-tag) |
 
 Note: there is no separate formal EOL announcement in releases/changelog for `v1`-`v3`; "legacy" here means non-current release lines.
 
-## Upgrading to v7
+## Upgrading from v5 to v6
 
-The `5.0.0` line targets **AI SDK v7** (provider specification v4). It is the current `latest` line; the `v4.x` line remains available for AI SDK v6.
+`v6.0.0` keeps AI SDK v7 (`specificationVersion: "v4"`) compatibility while refactoring middleware configuration into orthogonal `promptStrategy` and `historyStrategy` unions and isolating internal transport state.
+
+| v5 option / export | v6 replacement |
+|---|---|
+| `toolSystemPromptTemplate` | `promptStrategy: { mode: "text", template }` |
+| `placement` | `promptStrategy: { mode: "text", template, placement }` |
+| `suppressToolSystemPromptForForcedChoice` | `promptStrategy: { ..., suppressForForcedChoice }` |
+| `transformKExaone236BParams` | `promptStrategy: { mode: "messages", build }` (or `kExaone236BToolMiddleware`) |
+| `historyMode: "converted-text"` + `toolResponsePromptTemplate` | `historyStrategy: { mode: "converted-text", toolResponsePromptTemplate }` |
+| `historyMode: "provider-native"` | `historyStrategy: { mode: "provider-native" }` |
+| `allowsGeneratedTextJsonRecovery` on custom protocols | `allowsFallbackRecovery` on `TCMProtocol` |
+| `TCMCoreProtocol`, `isTCMProtocolFactory` | `TCMProtocol`, `isProtocolFactory` |
+| `Qwen3CoderToolParser`, `uiTarsXmlProtocol` | `qwen3CoderProtocol` (and `uiTarsToolMiddleware` from `@ai-sdk-tool/parser/community`) |
+| `KExaone2ToolParser`, `KExaone236BToolParser` | `kExaone2Protocol`, `kExaone236BProtocol` |
+
+- **Unified `transformParams` default placement:** direct calls to `transformParams` now default `placement` to `DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT` (`"last"`), matching `createToolMiddleware` (previously `"first"`). Pass `placement: "first"` explicitly if you relied on the old default.
+- **Transport isolation:** middleware-managed transport metadata lives under internal `_internal` state populated by `transformParams` and is stripped before calling the underlying provider model or protocol parser.
+- **`messages` prompt mode example:**
+
+```ts
+import {
+  createToolMiddleware,
+  kExaone236BProtocol,
+  kExaone236BSystemPromptMessages,
+} from "@ai-sdk-tool/parser";
+
+const middleware = createToolMiddleware({
+  protocol: kExaone236BProtocol,
+  promptStrategy: {
+    mode: "messages",
+    build: kExaone236BSystemPromptMessages,
+    suppressForForcedChoice: true,
+  },
+  historyStrategy: { mode: "provider-native" },
+});
+```
+
+## Upgrading from v4 (AI SDK v6) to AI SDK v7
+
+The `v5.x` / `v6.x` lines target **AI SDK v7** (provider specification v4). The `v4.x` line remains available for AI SDK v6.
 
 ```bash
 pnpm add @ai-sdk-tool/parser
@@ -77,10 +120,16 @@ import {
 // For text-only models, opt into placeholders:
 const textOnlyMiddleware = createToolMiddleware({
   protocol: hermesProtocol(),
-  toolSystemPromptTemplate: hermesSystemPromptTemplate,
-  toolResponsePromptTemplate: createHermesToolResponseFormatter({
-    mediaStrategy: { mode: "placeholder" },
-  }),
+  promptStrategy: {
+    mode: "text",
+    template: hermesSystemPromptTemplate,
+  },
+  historyStrategy: {
+    mode: "converted-text",
+    toolResponsePromptTemplate: createHermesToolResponseFormatter({
+      mediaStrategy: { mode: "placeholder" },
+    }),
+  },
 });
 
 // YAML XML tool *responses* reuse Morph's response formatter — use the Morph
@@ -91,7 +140,7 @@ Only `http:` / `https:` file URLs are forwarded as model file parts; other schem
 
 User-message images are unchanged — they pass through as-is.
 
-**Status:** `5.0.0` is the stable release line. Pin an exact version if you need reproducible installs.
+**Status:** `v6.x` is being released as a release candidate (`@ai-sdk-tool/parser@rc`, `6.0.0-rc.x`) for AI SDK v7 while `v5.x` remains npm `latest`. Pin an exact version if you need reproducible installs.
 
 ## Package map
 
@@ -243,7 +292,7 @@ This remains prompt-only middleware. AI SDK function definitions are rendered
 into that system turn and the transformed provider request always contains
 `tools: []` and no `toolChoice`. The provider returns ordinary generated text;
 the middleware parses GLM's `<tool_call>` text back into AI SDK tool-call parts.
-There is no provider-native or hybrid GLM transport in this package.
+There is no provider-native tool-calling transport in this package.
 
 ```ts
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
@@ -289,8 +338,11 @@ import { createToolMiddleware, qwen3CoderProtocol } from "@ai-sdk-tool/parser";
 
 export const myToolMiddleware = createToolMiddleware({
   protocol: qwen3CoderProtocol,
-  toolSystemPromptTemplate: (tools) =>
-    `Use these tools and emit <tool_call> blocks only: ${JSON.stringify(tools)}`,
+  promptStrategy: {
+    mode: "text",
+    template: (tools) =>
+      `Use these tools and emit <tool_call> blocks only: ${JSON.stringify(tools)}`,
+  },
 });
 ```
 
@@ -298,10 +350,8 @@ export const myToolMiddleware = createToolMiddleware({
 
 - `toolChoice: "auto"` (default) parses tool calls out of the model text.
 - `toolChoice: "required"` and `toolChoice: { type: "tool", toolName }` are emulated through JSON `responseFormat` constraints.
-- `toolChoice: "none"` skips tool prompt injection and tool-call parsing entirely; tool-call history retains the middleware's configured representation.
-- `kExaone236BToolMiddleware` is the exception: with `toolChoice: "none"` it
-  preserves the provider-native structured assistant/tool history and only
-  skips declaration and format-guide injection.
+- `toolChoice: "none"` skips tool prompt injection and tool-call parsing entirely; tool-call history retains the middleware's configured `historyStrategy` representation.
+- Presets configured with `historyStrategy: { mode: "provider-native" }` (`kExaone236BToolMiddleware` and `glm5ToolMiddleware`) preserve provider-native structured assistant/tool history under `toolChoice: "none"` and only skip tool-catalog injection.
 - Prompt-based middleware omits provider-defined tools and reports each omission
   as an unsupported warning in generate and stream results. Explicitly choosing
   a provider-defined tool by name is rejected because it has no function-tool

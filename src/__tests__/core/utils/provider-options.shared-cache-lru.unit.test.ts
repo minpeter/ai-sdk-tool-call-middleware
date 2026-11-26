@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   decodeOriginalToolsForMiddleware,
   encodeOriginalTools,
-} from "../../../core/utils/provider-options";
+} from "../../../core/utils/transport/provider-options";
 
 function tool(
   name: string,
@@ -19,7 +19,7 @@ function tool(
 
 function decode(encoded: ReturnType<typeof encodeOriginalTools>) {
   return decodeOriginalToolsForMiddleware({
-    toolCallMiddleware: { originalTools: encoded },
+    toolCallMiddleware: { _internal: { originalTools: encoded } },
   });
 }
 
@@ -124,7 +124,7 @@ describe("shared original-tools exact-entry LRU", () => {
       ]);
       expect(
         decodeOriginalToolsForMiddleware(
-          { toolCallMiddleware: { originalTools: encoded } },
+          { toolCallMiddleware: { _internal: { originalTools: encoded } } },
           { onError }
         )
       ).toEqual([]);

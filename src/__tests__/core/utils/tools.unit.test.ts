@@ -6,28 +6,30 @@ import {
   decodeOriginalToolsFromProviderOptions,
   encodeOriginalTools,
   isToolChoiceActive,
-} from "../../../core/utils/provider-options";
+} from "../../../core/utils/transport/provider-options";
 
 describe("tools utils", () => {
   it("isToolChoiceActive detects required and tool types", () => {
     expect(
       isToolChoiceActive({
         providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "required" } },
+          toolCallMiddleware: {
+            _internal: { toolChoice: { type: "required" } },
+          },
         },
       })
     ).toBe(true);
     expect(
       isToolChoiceActive({
         providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "tool" } },
+          toolCallMiddleware: { _internal: { toolChoice: { type: "tool" } } },
         },
       })
     ).toBe(true);
     expect(
       isToolChoiceActive({
         providerOptions: {
-          toolCallMiddleware: { toolChoice: { type: "none" } },
+          toolCallMiddleware: { _internal: { toolChoice: { type: "none" } } },
         },
       })
     ).toBe(false);
@@ -76,7 +78,9 @@ describe("tools utils", () => {
         },
       },
     ]);
-    const providerOptions = { toolCallMiddleware: { originalTools } };
+    const providerOptions = {
+      toolCallMiddleware: { _internal: { originalTools } },
+    };
 
     expect(
       decodeOriginalToolsForMiddleware(providerOptions)[0]?.inputSchema
@@ -93,13 +97,15 @@ describe("tools utils", () => {
   it("prevents cached catalog mutation from poisoning a later request", () => {
     const makeOptions = () => ({
       toolCallMiddleware: {
-        originalTools: encodeOriginalTools([
-          {
-            type: "function" as const,
-            name: "calc",
-            inputSchema: { type: "object" as const },
-          },
-        ]),
+        _internal: {
+          originalTools: encodeOriginalTools([
+            {
+              type: "function" as const,
+              name: "calc",
+              inputSchema: { type: "object" as const },
+            },
+          ]),
+        },
       },
     });
     const first = decodeOriginalToolsForMiddleware(makeOptions());
@@ -134,7 +140,7 @@ describe("tools utils", () => {
 
     expect(
       decodeOriginalToolsForMiddleware(
-        { toolCallMiddleware: { originalTools } },
+        { toolCallMiddleware: { _internal: { originalTools } } },
         { onError }
       )
     ).toEqual([]);
@@ -152,7 +158,9 @@ describe("tools utils", () => {
         },
       },
     ]);
-    const providerOptions = { toolCallMiddleware: { originalTools } };
+    const providerOptions = {
+      toolCallMiddleware: { _internal: { originalTools } },
+    };
     const first = decodeOriginalToolsFromProviderOptions(providerOptions);
     (first[0]?.inputSchema as { properties?: unknown }).properties = {};
 

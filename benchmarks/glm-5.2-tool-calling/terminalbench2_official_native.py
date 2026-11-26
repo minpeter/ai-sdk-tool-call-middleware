@@ -50,7 +50,7 @@ SCORABLE_AGENT_EXCEPTIONS = {
     "AgentTimeoutError",
     "NonZeroAgentExitCodeError",
 }
-FINAL_PARSER_PATH = Path("src/core/protocols/glm5-call-parsing.ts")
+FINAL_PARSER_PATH = Path("src/core/protocols/glm5/call-parsing.ts")
 RUNTIME_BRIDGE_PATHS = (
     Path("benchmarks/glm-5.2-tool-calling/src/benchmark-model-call.ts"),
     Path("benchmarks/glm-5.2-tool-calling/src/openai-compat-bridge.ts"),

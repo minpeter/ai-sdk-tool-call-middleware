@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, test } from "vitest";
 
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 
 describe("morphXmlProtocol parseGeneratedText self-closing tags", () => {
   const tools: LanguageModelV4FunctionTool[] = [

@@ -1,7 +1,7 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -11,11 +11,11 @@ import {
 const fullCallParseWork = vi.hoisted(() => ({ characters: 0 }));
 
 vi.mock(
-  "../../../../core/protocols/qwen3coder-stream-call-consumption",
+  "../../../../core/protocols/qwen3coder/stream-call-consumption",
   async (importOriginal) => {
     const actual =
       await importOriginal<
-        typeof import("../../../../core/protocols/qwen3coder-stream-call-consumption")
+        typeof import("../../../../core/protocols/qwen3coder/stream-call-consumption")
       >();
     return {
       ...actual,

@@ -11,36 +11,81 @@ import type {
   LanguageModelV4ToolResultPart,
 } from "@ai-sdk/provider";
 import type { ToolContent, ToolResultPart } from "@ai-sdk/provider-utils";
-import { assistantToolCallsToTextContent } from "./core/prompts/shared/assistant-tool-calls-to-text";
+import {
+  isProtocolFactory,
+  type TCMProtocol,
+} from "./core/protocols/protocol-interface";
+import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
+import { assistantToolCallsToTextContent } from "./core/utils/history/assistant-tool-calls-to-text";
 import {
   type ToolResponsePromptTemplateResult,
   toolRoleContentToUserTextMessage,
-} from "./core/prompts/shared/tool-role-to-user-message";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
-import { createDynamicIfThenElseSchema } from "./core/utils/dynamic-tool-schema";
-import { extractOnErrorOption } from "./core/utils/on-error";
+} from "./core/utils/history/tool-role-to-user-message";
+import { createDynamicIfThenElseSchema } from "./core/utils/transport/dynamic-tool-schema";
 import {
-  mergeToolCallMiddlewareOptions,
+  mergeMiddlewareInternalState,
   originalToolsSchema,
-} from "./core/utils/provider-options";
+  setMiddlewareInternalState,
+  type ToolCallMiddlewareProviderOptions,
+} from "./core/utils/transport/provider-options";
 
 /**
- * Controls how historical assistant tool calls and tool results are encoded.
- * `provider-native` preserves the original AI SDK assistant and tool messages.
- */
-export type ToolCallHistoryMode = "converted-text" | "provider-native";
-
-/**
- * Controls where the rendered tool system prompt is inserted.
+ * Controls where the rendered text tool system prompt is inserted.
  * `standalone-first` prepends a new system turn without merging existing turns.
  */
 export type ToolSystemPromptPlacement = "first" | "last" | "standalone-first";
 
+export const DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT: ToolSystemPromptPlacement =
+  "last";
+
 /**
- * Build the final prompt by placing or merging the rendered system prompt.
+ * Orthogonal Design Parameter for tool catalog prompt injection (DP2.1).
+ * `placement` is exclusive to `"text"` mode so it cannot be combined with
+ * multi-message builders at compile time.
  */
-function buildFinalPrompt(
+export type ToolPromptStrategy =
+  | {
+      readonly mode: "text";
+      readonly placement?: ToolSystemPromptPlacement;
+      /**
+       * Omit the protocol-specific tool catalog when `toolChoice` is `required`
+       * or selects a fixed tool, avoiding grammar conflicts with JSON
+       * `responseFormat` constraints.
+       */
+      readonly suppressForForcedChoice?: boolean;
+      readonly template: (tools: LanguageModelV4FunctionTool[]) => string;
+    }
+  | {
+      readonly build: (
+        tools: LanguageModelV4FunctionTool[]
+      ) => LanguageModelV4Prompt;
+      readonly mode: "messages";
+      readonly suppressForForcedChoice?: boolean;
+    };
+
+/**
+ * Orthogonal Design Parameter for multi-turn conversation history encoding (DP2.2).
+ * `provider-native` preserves original AI SDK assistant and tool messages.
+ */
+export type ToolHistoryStrategy =
+  | {
+      readonly mode: "converted-text";
+      readonly toolResponsePromptTemplate?: (
+        toolResult: ToolResultPart
+      ) => ToolResponsePromptTemplateResult;
+    }
+  | {
+      readonly mode: "provider-native";
+    };
+
+const DEFAULT_HISTORY_STRATEGY: ToolHistoryStrategy = {
+  mode: "converted-text",
+};
+
+/**
+ * Build the final prompt by placing or merging the rendered text system prompt.
+ */
+function buildFinalTextPrompt(
   systemPrompt: string,
   processedPrompt: LanguageModelV4Prompt,
   placement: ToolSystemPromptPlacement
@@ -107,14 +152,51 @@ function buildFinalPrompt(
   ];
 }
 
+function applyPromptStrategy(options: {
+  forcedToolChoice: boolean;
+  functionTools: LanguageModelV4FunctionTool[];
+  processedPrompt: LanguageModelV4Prompt;
+  promptStrategy: ToolPromptStrategy;
+  resolvedProtocol: TCMProtocol;
+}): LanguageModelV4Prompt {
+  const {
+    forcedToolChoice,
+    functionTools,
+    processedPrompt,
+    promptStrategy,
+    resolvedProtocol,
+  } = options;
+
+  if (promptStrategy.suppressForForcedChoice && forcedToolChoice) {
+    return processedPrompt;
+  }
+
+  if (promptStrategy.mode === "messages") {
+    const leadingMessages = promptStrategy.build(functionTools);
+    return leadingMessages.length > 0
+      ? [...leadingMessages, ...processedPrompt]
+      : processedPrompt;
+  }
+
+  const systemPrompt = resolvedProtocol.formatTools({
+    tools: functionTools,
+    toolSystemPromptTemplate: promptStrategy.template,
+  });
+  return buildFinalTextPrompt(
+    systemPrompt,
+    processedPrompt,
+    promptStrategy.placement ?? DEFAULT_TOOL_SYSTEM_PROMPT_PLACEMENT
+  );
+}
+
 /**
- * Build base return parameters with middleware options
+ * Build base return parameters with isolated middleware internal transport state.
  */
 function buildBaseReturnParams(
   params: {
     prompt?: LanguageModelV4Prompt;
     tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
-    providerOptions?: unknown;
+    providerOptions?: ToolCallMiddlewareProviderOptions;
     toolChoice?: { type: string; toolName?: string };
   },
   finalPrompt: LanguageModelV4Prompt,
@@ -135,16 +217,13 @@ function buildBaseReturnParams(
     prompt: finalPrompt,
     tools: [] as never[],
     toolChoice: undefined,
-    providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
+    providerOptions: setMiddlewareInternalState(params.providerOptions, {
       originalTools: originalToolsSchema.encode(functionTools),
       ...(droppedProviderTools.length > 0 ? { droppedProviderTools } : {}),
     }),
   };
 }
 
-/**
- * Find provider-defined tool matching the selected tool name
- */
 function findProviderDefinedTool(
   tools: Array<LanguageModelV4FunctionTool | { type: string }>,
   selectedToolName: string
@@ -158,9 +237,6 @@ function findProviderDefinedTool(
   });
 }
 
-/**
- * Handle tool choice type 'tool'
- */
 function handleToolChoiceTool(
   params: {
     tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
@@ -215,16 +291,18 @@ function handleToolChoiceTool(
           ? selectedTool.description
           : undefined,
     },
-    providerOptions: mergeToolCallMiddlewareOptions(
+    providerOptions: mergeMiddlewareInternalState(
       baseReturnParams.providerOptions,
-      params.toolChoice ? { toolChoice: params.toolChoice } : {}
+      {
+        toolChoice: {
+          type: "tool" as const,
+          toolName: selectedTool.name,
+        },
+      }
     ),
   };
 }
 
-/**
- * Handle tool choice type 'required'
- */
 function handleToolChoiceRequired(
   params: {
     tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
@@ -250,7 +328,7 @@ function handleToolChoiceRequired(
       type: "json" as const,
       schema: createDynamicIfThenElseSchema(functionTools),
     },
-    providerOptions: mergeToolCallMiddlewareOptions(
+    providerOptions: mergeMiddlewareInternalState(
       baseReturnParams.providerOptions,
       {
         toolChoice: { type: "required" as const },
@@ -262,49 +340,24 @@ function handleToolChoiceRequired(
 export function transformParams({
   params,
   protocol,
-  toolSystemPromptTemplate,
-  toolResponsePromptTemplate,
-  placement = "first",
-  historyMode = "converted-text",
-  suppressToolSystemPromptForForcedChoice = false,
+  promptStrategy,
+  historyStrategy = DEFAULT_HISTORY_STRATEGY,
 }: {
   params: {
     prompt?: LanguageModelV4Prompt;
     tools?: Array<LanguageModelV4FunctionTool | { type: string }>;
-    providerOptions?: {
-      toolCallMiddleware?: {
-        toolChoice?: { type: string };
-      };
-    };
+    providerOptions?: ToolCallMiddlewareProviderOptions;
     toolChoice?: { type: string; toolName?: string };
   };
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (
-    toolResult: ToolResultPart
-  ) => ToolResponsePromptTemplateResult;
-  placement?: ToolSystemPromptPlacement;
-  historyMode?: ToolCallHistoryMode;
-  suppressToolSystemPromptForForcedChoice?: boolean;
+  protocol: TCMProtocol | (() => TCMProtocol);
+  promptStrategy: ToolPromptStrategy;
+  historyStrategy?: ToolHistoryStrategy;
 }) {
-  const resolvedProtocol = isTCMProtocolFactory(protocol)
-    ? protocol()
-    : protocol;
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   const functionTools = (params.tools ?? []).filter(
     (t): t is LanguageModelV4FunctionTool => t.type === "function"
   );
-
-  const forcedToolChoice =
-    params.toolChoice?.type === "tool" ||
-    params.toolChoice?.type === "required";
-  const systemPrompt =
-    suppressToolSystemPromptForForcedChoice && forcedToolChoice
-      ? ""
-      : resolvedProtocol.formatTools({
-          tools: functionTools,
-          toolSystemPromptTemplate,
-        });
 
   let normalizedPrompt: LanguageModelV4Message[];
   if (Array.isArray(params.prompt)) {
@@ -314,13 +367,14 @@ export function transformParams({
   } else {
     normalizedPrompt = [];
   }
+
   const processedPrompt =
-    historyMode === "provider-native"
+    historyStrategy.mode === "provider-native"
       ? normalizedPrompt
       : convertToolPrompt(
           normalizedPrompt,
           resolvedProtocol,
-          toolResponsePromptTemplate,
+          historyStrategy.toolResponsePromptTemplate,
           extractOnErrorOption(params.providerOptions)
         );
 
@@ -333,17 +387,24 @@ export function transformParams({
       prompt: processedPrompt,
       tools: [] as never[],
       toolChoice: undefined,
-      providerOptions: mergeToolCallMiddlewareOptions(params.providerOptions, {
+      providerOptions: setMiddlewareInternalState(params.providerOptions, {
         toolChoice: { type: "none" as const },
       }),
     };
   }
 
-  const finalPrompt = buildFinalPrompt(
-    systemPrompt,
+  const forcedToolChoice =
+    params.toolChoice?.type === "tool" ||
+    params.toolChoice?.type === "required";
+
+  const finalPrompt = applyPromptStrategy({
+    forcedToolChoice,
+    functionTools,
     processedPrompt,
-    placement
-  );
+    promptStrategy,
+    resolvedProtocol,
+  });
+
   const baseReturnParams = buildBaseReturnParams(
     params,
     finalPrompt,
@@ -361,12 +422,9 @@ export function transformParams({
   return baseReturnParams;
 }
 
-/**
- * Process a single message in the prompt
- */
 function processMessage(
   message: LanguageModelV4Prompt[number],
-  resolvedProtocol: TCMCoreProtocol,
+  resolvedProtocol: TCMProtocol,
   providerOptions?: {
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   },
@@ -413,9 +471,6 @@ function processMessage(
   return message;
 }
 
-/**
- * Check if all content parts are text
- */
 function isAllTextContent(content: unknown): boolean {
   if (!Array.isArray(content)) {
     return false;
@@ -425,16 +480,10 @@ function isAllTextContent(content: unknown): boolean {
   );
 }
 
-/**
- * Join text content parts into a single string
- */
 function joinTextContent(content: { text: string }[]): string {
   return content.map((c) => c.text).join("\n");
 }
 
-/**
- * Create condensed message based on role
- */
 function createCondensedMessage(role: string, joinedText: string) {
   if (role === "system") {
     return {
@@ -454,9 +503,6 @@ function createCondensedMessage(role: string, joinedText: string) {
   };
 }
 
-/**
- * Condense multi-part text content into single text part
- */
 function condenseTextContent(
   processedPrompt: LanguageModelV4Prompt
 ): LanguageModelV4Prompt {
@@ -480,9 +526,6 @@ function condenseTextContent(
   return processedPrompt;
 }
 
-/**
- * Merge consecutive user messages
- */
 function mergeConsecutiveUserMessages(
   processedPrompt: LanguageModelV4Prompt
 ): LanguageModelV4Prompt {
@@ -514,7 +557,7 @@ function mergeConsecutiveUserMessages(
 
 function convertToolPrompt(
   prompt: LanguageModelV4Message[],
-  resolvedProtocol: TCMCoreProtocol,
+  resolvedProtocol: TCMProtocol,
   toolResponsePromptTemplate?: (
     toolResult: ToolResultPart
   ) => ToolResponsePromptTemplateResult,

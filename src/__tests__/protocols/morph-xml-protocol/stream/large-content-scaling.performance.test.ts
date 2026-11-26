@@ -1,7 +1,7 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -11,11 +11,11 @@ import {
 const fullProgressParseWork = vi.hoisted(() => ({ characters: 0 }));
 
 vi.mock(
-  "../../../../core/protocols/morph-xml-stream-progress",
+  "../../../../core/protocols/morph-xml/stream-progress",
   async (importOriginal) => {
     const actual =
       await importOriginal<
-        typeof import("../../../../core/protocols/morph-xml-stream-progress")
+        typeof import("../../../../core/protocols/morph-xml/stream-progress")
       >();
     return {
       ...actual,

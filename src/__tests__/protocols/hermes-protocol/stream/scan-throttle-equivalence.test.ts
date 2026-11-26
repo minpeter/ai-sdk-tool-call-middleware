@@ -1,7 +1,7 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -11,11 +11,11 @@ import {
 const boundaryScanWork = vi.hoisted(() => ({ characters: 0 }));
 
 vi.mock(
-  "../../../../core/protocols/hermes-call-boundary",
+  "../../../../core/protocols/hermes/call-boundary",
   async (importOriginal) => {
     const actual =
       await importOriginal<
-        typeof import("../../../../core/protocols/hermes-call-boundary")
+        typeof import("../../../../core/protocols/hermes/call-boundary")
       >();
     return {
       ...actual,

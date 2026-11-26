@@ -1,6 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { parseGlm5AnchoredBareToolCall } from "../../../core/protocols/glm5-bare-tool-call";
+import { parseGlm5AnchoredBareToolCall } from "../../../core/protocols/glm5/bare-tool-call";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {

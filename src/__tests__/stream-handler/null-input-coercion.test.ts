@@ -2,11 +2,11 @@ import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapStream } from "../../stream-handler";
 
-const passthroughProtocol: TCMCoreProtocol = {
+const passthroughProtocol: TCMProtocol = {
   formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
   parseGeneratedText: () => [],
@@ -48,7 +48,7 @@ describe("wrapStream null input coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },
@@ -91,7 +91,7 @@ describe("wrapStream null input coercion", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },

@@ -8,7 +8,7 @@ import { mockUsage, stopFinishReason, zeroUsage } from "../test-helpers";
 describe("createToolMiddleware wrapStream protocol compliance integration", () => {
   const middleware = createToolMiddleware({
     protocol: dummyProtocol,
-    toolSystemPromptTemplate: () => "",
+    promptStrategy: { mode: "text", template: () => "" },
   });
 
   const runMiddleware = (stream: ReadableStream<LanguageModelV4StreamPart>) => {

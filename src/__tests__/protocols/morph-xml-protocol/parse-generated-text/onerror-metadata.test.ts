@@ -1,6 +1,6 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {

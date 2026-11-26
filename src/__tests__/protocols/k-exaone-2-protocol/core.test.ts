@@ -1,7 +1,7 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { KExaone2SerializationError } from "../../../core/prompts/k-exaone-2-serialization-error";
-import { kExaone2Protocol } from "../../../core/protocols/k-exaone-2-protocol";
+import { kExaone2Protocol } from "../../../core/protocols/k-exaone/k-exaone-2-protocol";
+import { KExaone2SerializationError } from "../../../core/utils/codecs/k-exaone-2-serialization-error";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {

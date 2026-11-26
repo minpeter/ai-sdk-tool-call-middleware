@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -30,8 +30,10 @@ describe("transformParams", () => {
   it("should transform params with tools into prompt", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: (tools) =>
-        `You have tools: ${JSON.stringify(tools)}`,
+      promptStrategy: {
+        mode: "text",
+        template: (tools) => `You have tools: ${JSON.stringify(tools)}`,
+      },
     });
 
     const params = {
@@ -66,7 +68,7 @@ describe("transformParams", () => {
   it("should default to an empty tool list when tools are omitted", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol({}),
-      toolSystemPromptTemplate: () => "SYSTEM: no tools",
+      promptStrategy: { mode: "text", template: () => "SYSTEM: no tools" },
     });
 
     const transformParams = requireTransformParams(middleware.transformParams);
@@ -98,7 +100,7 @@ describe("transformParams", () => {
     });
     expect(result.tools).toEqual([]);
     expect(
-      (result.providerOptions as any).toolCallMiddleware.originalTools
+      (result.providerOptions as any).toolCallMiddleware._internal.originalTools
     ).toEqual([]);
     expect((result.providerOptions as any).toolCallMiddleware.existing).toBe(
       true

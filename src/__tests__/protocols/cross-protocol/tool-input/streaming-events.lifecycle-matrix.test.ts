@@ -3,13 +3,10 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, it } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
-import {
-  qwen3CoderProtocol,
-  uiTarsXmlProtocol,
-} from "../../../../core/protocols/qwen3coder-protocol";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 import { dummyProtocol } from "../../../fixtures/dummy-protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
@@ -70,7 +67,7 @@ describe("cross-protocol tool-input streaming events: lifecycle matrix", () => {
     {
       name: "ui-tars-xml",
       tools: toolInputStreamFixtures.json.tools,
-      createProtocol: () => uiTarsXmlProtocol(),
+      createProtocol: () => qwen3CoderProtocol(),
       openChunk: "Before <tool_call><function=get_weather><parameter=location>",
       closeChunk:
         "Seoul</parameter><parameter=unit>celsius</parameter></function></tool_call> After",

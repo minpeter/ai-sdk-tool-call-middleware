@@ -3,7 +3,7 @@ import { generateText, streamText, tool, wrapLanguageModel } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { mockFinishReason, zeroUsage } from "../test-helpers";
 
@@ -57,7 +57,10 @@ describe("interrupted tool calls through the AI SDK", () => {
               model: provider,
               middleware: createToolMiddleware({
                 protocol: hermesProtocol(),
-                toolSystemPromptTemplate: () => "Use the supplied tools.",
+                promptStrategy: {
+                  mode: "text",
+                  template: () => "Use the supplied tools.",
+                },
               }),
             }),
             prompt: "Check the weather in Seoul.",

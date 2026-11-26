@@ -1,11 +1,7 @@
 import { parse as parseRJSON } from "../rjson";
-import { unescapeXml } from "../rxml/utils/helpers";
+import { isPrototypeSensitiveKey } from "../shared/prototype-keys";
+import { unescapeXml } from "../shared/xml-escape";
 
-const COERCE_PROTOTYPE_SENSITIVE_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
 /** Python literals models leak into JSON-ish payloads (`True`, `None`). */
 const IDENTIFIER_CHAR_REGEX = /[\w$]/;
 const XML_CHILD_VALUE_CLOSED_RE = /^<([A-Za-z_][\w.-]*)\s*>([^<]*)<\/\1\s*>$/;
@@ -81,7 +77,7 @@ function hasPrototypeSensitiveOwnKey(value: unknown): boolean {
     return value.some(hasPrototypeSensitiveOwnKey);
   }
   for (const key of Object.keys(value as Record<string, unknown>)) {
-    if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+    if (isPrototypeSensitiveKey(key)) {
       return true;
     }
     if (hasPrototypeSensitiveOwnKey((value as Record<string, unknown>)[key])) {
@@ -117,7 +113,7 @@ export function parseLooseStructuredString(s: string): unknown {
   try {
     let foundPrototypeSensitiveKey = false;
     const parsed = parseRJSON(normalized, (key: string, value: unknown) => {
-      if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+      if (isPrototypeSensitiveKey(key)) {
         foundPrototypeSensitiveKey = true;
         return;
       }
@@ -156,7 +152,7 @@ export function parseXmlChildrenValue(
       return null;
     }
     const [, key] = match;
-    if (COERCE_PROTOTYPE_SENSITIVE_KEYS.has(key)) {
+    if (isPrototypeSensitiveKey(key)) {
       return null;
     }
     // Match the yaml-xml protocol's body fallback: unescape XML entities
@@ -173,7 +169,3 @@ export function parseXmlChildrenValue(
   }
   return record;
 }
-
-/**
- * Coerce string to object using schema
- */

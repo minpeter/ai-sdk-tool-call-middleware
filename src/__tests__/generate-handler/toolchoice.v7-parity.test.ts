@@ -4,8 +4,10 @@ import { dummyProtocol } from "../fixtures/dummy-protocol";
 
 const forcedChoiceProviderOptions = {
   toolCallMiddleware: {
-    toolChoice: { type: "required" as const },
-    originalTools: [{ name: "do", inputSchema: '{"type":"object"}' }],
+    _internal: {
+      toolChoice: { type: "required" as const },
+      originalTools: [{ name: "do", inputSchema: '{"type":"object"}' }],
+    },
   },
 };
 

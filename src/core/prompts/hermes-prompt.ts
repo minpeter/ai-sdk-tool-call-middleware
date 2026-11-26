@@ -1,12 +1,12 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
+import { formatToolResponseWithMedia } from "../utils/history/tool-response-with-media";
+import type { ToolResponseMediaStrategy } from "../utils/history/tool-result-normalizer";
+import type { ToolResponsePromptTemplateResult } from "../utils/history/tool-result-user-content";
 import {
   renderInputExamplesSection,
   stringifyInputExampleAsJsonLiteral,
 } from "./shared/input-examples";
-import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
-import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
-import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
 
 interface HermesToolResponseFormatterOptions {
   mediaStrategy?: ToolResponseMediaStrategy;

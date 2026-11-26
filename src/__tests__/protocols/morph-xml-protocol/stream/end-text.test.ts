@@ -2,7 +2,7 @@ import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it } from "vitest";
 
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,

@@ -4,9 +4,9 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapGenerate } from "../../generate-handler";
 import { stopFinishReason, zeroUsage } from "../test-helpers";
 
@@ -36,7 +36,7 @@ const source = {
 
 async function generate(
   content: LanguageModelV4Content[],
-  protocol: TCMCoreProtocol = hermesProtocol()
+  protocol: TCMProtocol = hermesProtocol()
 ) {
   const result = await wrapGenerate({
     protocol,
@@ -49,7 +49,7 @@ async function generate(
     params: {
       providerOptions: {
         toolCallMiddleware: {
-          originalTools: originalToolsSchema.encode(tools),
+          _internal: { originalTools: originalToolsSchema.encode(tools) },
         },
       },
     },

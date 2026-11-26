@@ -8,7 +8,7 @@ import {
   morphFormatToolResponseAsXml,
   morphXmlSystemPromptTemplate,
 } from "../../core/prompts/morph-xml-prompt";
-import { morphXmlProtocol } from "../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../core/protocols/morph-xml/protocol";
 import { transformParams } from "../../transform-handler";
 
 describe("transformParams morph-xml outer-layer transform", () => {
@@ -65,12 +65,18 @@ describe("transformParams morph-xml outer-layer transform", () => {
 
     const transformed = transformParams({
       protocol: morphXmlProtocol({}),
-      placement: "first",
-      toolSystemPromptTemplate: morphXmlSystemPromptTemplate,
-      toolResponsePromptTemplate: morphFormatToolResponseAsXml,
       params: {
         prompt: inputPrompt,
         tools,
+      },
+      promptStrategy: {
+        mode: "text",
+        template: morphXmlSystemPromptTemplate,
+        placement: "first",
+      },
+      historyStrategy: {
+        mode: "converted-text",
+        toolResponsePromptTemplate: morphFormatToolResponseAsXml,
       },
     });
 

@@ -3,52 +3,103 @@ import type {
   LanguageModelV4Content,
   LanguageModelV4FunctionTool,
   LanguageModelV4StreamPart,
+  LanguageModelV4ToolCall,
   LanguageModelV4Usage,
   SharedV4Warning,
 } from "@ai-sdk/provider";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
-import { getDebugLevel, logParsedChunk, logRawChunk } from "./core/utils/debug";
+import type { TCMProtocol } from "./core/protocols/protocol-interface";
+import { coerceToolCallPart } from "./core/utils/coercion/tool-call-coercion";
+import {
+  getDebugLevel,
+  logParsedChunk,
+  logRawChunk,
+} from "./core/utils/diagnostics/debug";
+import {
+  recordForcedToolChoiceDebugSummary,
+  recordParsedDebugSummary,
+  resetDebugSummary,
+} from "./core/utils/diagnostics/debug-summary";
+import { extractOnErrorOption } from "./core/utils/diagnostics/on-error";
+import { generateToolCallId } from "./core/utils/primitives/id";
+import { safeToolCallMetadataText } from "./core/utils/primitives/protocol-utils";
+import { createStreamJsonRecoveryTransform } from "./core/utils/recovery/stream-json-recovery";
 import {
   normalizeForcedToolChoiceFinishReason,
   normalizeToolCallsFinishReason,
   shouldRewriteFinishReasonToToolCalls,
-} from "./core/utils/finish-reason";
-import { generateToolCallId } from "./core/utils/id";
-import { extractOnErrorOption } from "./core/utils/on-error";
-import {
-  decodeOriginalToolsForMiddleware,
-  getDroppedProviderTools,
-  getToolCallMiddlewareOptions,
-  isToolChoiceActive,
-  isToolChoiceNone,
-  type ToolCallMiddlewareProviderOptions,
-} from "./core/utils/provider-options";
-import { createStreamJsonRecoveryTransform } from "./core/utils/stream-json-recovery";
+} from "./core/utils/response/finish-reason";
 import {
   createCitationCaptureTransform,
   createCitationRestoreTransform,
-} from "./core/utils/text-citations";
-import { coerceToolCallPart } from "./core/utils/tool-call-coercion";
+} from "./core/utils/response/text-citations";
+import {
+  createDroppedProviderToolWarnings,
+  decodeOriginalToolsForMiddleware,
+  extractToolCallParserOptions,
+  getToolChoiceExpectedToolName,
+  isToolChoiceActive,
+  isToolChoiceNone,
+  type ToolCallMiddlewareDebugSummary,
+  type ToolCallMiddlewareProviderOptions,
+} from "./core/utils/transport/provider-options";
 import {
   findToolChoiceResultText,
   resolveToolChoiceSelection,
-} from "./core/utils/tool-choice";
+} from "./core/utils/transport/tool-choice";
 
-/**
- * Prompt-based tool calling can only express function tools; provider tools
- * are dropped in transformParams and surfaced here as spec warnings.
- */
-function droppedProviderToolWarnings(
-  providerOptions: unknown
-): SharedV4Warning[] {
-  return getDroppedProviderTools(providerOptions).map(
-    (name): SharedV4Warning => ({
-      type: "unsupported",
-      feature: `provider tool ${name}`,
-      details:
-        "Prompt-based tool-call middleware only supports function tools; the provider tool was removed from the request.",
-    })
-  );
+function createRawTextBlockTracker() {
+  const blocks: string[][] = [];
+  const openBlocksById = new Map<string, string[]>();
+  let anonymousBlock: string[] | null = null;
+
+  const getOrCreateBlock = (id: string | null): string[] => {
+    if (id !== null) {
+      const existing = openBlocksById.get(id);
+      if (existing) {
+        return existing;
+      }
+      const created: string[] = [];
+      blocks.push(created);
+      openBlocksById.set(id, created);
+      return created;
+    }
+    if (!anonymousBlock) {
+      anonymousBlock = [];
+      blocks.push(anonymousBlock);
+    }
+    return anonymousBlock;
+  };
+
+  return {
+    record(part: LanguageModelV4StreamPart): void {
+      if (part.type === "text-start") {
+        const block: string[] = [];
+        blocks.push(block);
+        if (typeof part.id === "string" && part.id.length > 0) {
+          openBlocksById.set(part.id, block);
+        } else {
+          anonymousBlock = block;
+        }
+        return;
+      }
+      if (part.type === "text-delta") {
+        const id =
+          typeof part.id === "string" && part.id.length > 0 ? part.id : null;
+        getOrCreateBlock(id).push(part.delta);
+        return;
+      }
+      if (part.type === "text-end") {
+        if (typeof part.id === "string" && part.id.length > 0) {
+          openBlocksById.delete(part.id);
+        } else {
+          anonymousBlock = null;
+        }
+      }
+    },
+    joinBlocks(): string {
+      return blocks.map((chunks) => chunks.join("")).join("\n\n");
+    },
+  };
 }
 
 export async function wrapStream({
@@ -57,7 +108,7 @@ export async function wrapStream({
   doGenerate,
   params,
 }: {
-  protocol: TCMCoreProtocol;
+  protocol: TCMProtocol;
   doStream: () => ReturnType<LanguageModelV4["doStream"]>;
   doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
   params: {
@@ -66,7 +117,8 @@ export async function wrapStream({
 }) {
   if (isToolChoiceNone(params)) {
     // toolChoice 'none': no tool prompt was injected and no tool calls are
-    // expected, so pass the model stream through untouched.
+    // expected, so reset any reused debugSummary and pass the stream through.
+    resetDebugSummary(params.providerOptions?.toolCallMiddleware?.debugSummary);
     return doStream();
   }
 
@@ -76,38 +128,44 @@ export async function wrapStream({
     onErrorOptions
   );
 
-  const extraWarnings = droppedProviderToolWarnings(params.providerOptions);
+  const extraWarnings = createDroppedProviderToolWarnings(
+    params.providerOptions
+  );
 
   if (isToolChoiceActive(params)) {
     return toolChoiceStream({
       doGenerate,
       tools,
-      expectedToolName: (
-        getToolCallMiddlewareOptions(params.providerOptions).toolChoice as
-          | { toolName?: string }
-          | undefined
-      )?.toolName,
+      expectedToolName: getToolChoiceExpectedToolName(params.providerOptions),
       options: onErrorOptions,
       extraWarnings,
+      debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
     });
   }
 
   const { stream, ...rest } = await doStream();
   const debugLevel = getDebugLevel();
-  const options = {
-    ...onErrorOptions,
-    ...getToolCallMiddlewareOptions(params.providerOptions),
-  };
+  const collectSummary = Boolean(
+    params.providerOptions?.toolCallMiddleware?.debugSummary ||
+      debugLevel === "parse"
+  );
+  const rawTextTracker = createRawTextBlockTracker();
+  const options = extractToolCallParserOptions(params.providerOptions);
 
-  const loggedStream =
-    debugLevel === "stream"
+  const tappedStream =
+    debugLevel === "stream" || collectSummary
       ? stream.pipeThrough(
           new TransformStream<
             LanguageModelV4StreamPart,
             LanguageModelV4StreamPart
           >({
             transform(part, controller) {
-              logRawChunk(part);
+              if (debugLevel === "stream") {
+                logRawChunk(part);
+              }
+              if (collectSummary) {
+                rawTextTracker.record(part);
+              }
               controller.enqueue(part);
             },
           })
@@ -116,12 +174,13 @@ export async function wrapStream({
 
   // Citations ride on the provider's `text-end`, which the protocol parser
   // drops, so they are captured before parsing and restored after it.
-  const coreStream = loggedStream
+  const coreStream = tappedStream
     .pipeThrough(createCitationCaptureTransform())
     .pipeThrough(protocol.createStreamParser({ tools, options }))
     .pipeThrough(
       createStreamJsonRecoveryTransform({
-        allowsRecovery: protocol.allowsGeneratedTextJsonRecovery,
+        allowsRecovery: (text) =>
+          protocol.allowsFallbackRecovery?.(text) ?? true,
         tools,
       })
     )
@@ -129,6 +188,60 @@ export async function wrapStream({
 
   let seenToolCall = false;
   let emittedExtraWarnings = extraWarnings.length === 0;
+  let recordedSummary = false;
+  const collectedToolCalls: LanguageModelV4ToolCall[] = [];
+
+  const finalizeSummary = () => {
+    if (!collectSummary || recordedSummary) {
+      return;
+    }
+    recordedSummary = true;
+    recordParsedDebugSummary({
+      allText: rawTextTracker.joinBlocks(),
+      debugSummary: params.providerOptions?.toolCallMiddleware?.debugSummary,
+      extractToolCallSegments: (segmentParams) =>
+        protocol.extractToolCallSegments?.(segmentParams) ?? [],
+      onError: onErrorOptions?.onError,
+      toolCalls: collectedToolCalls,
+      tools,
+    });
+  };
+
+  const normalizePart = (
+    part: LanguageModelV4StreamPart
+  ): LanguageModelV4StreamPart => {
+    // Provider-executed tool calls pass through byte-identical and do not
+    // trigger the tool-calls finish rewrite: the provider already ran them.
+    if (part.type === "tool-call") {
+      const normalized = part.providerExecuted
+        ? part
+        : coerceToolCallPart(part, tools);
+      if (collectSummary) {
+        collectedToolCalls.push(normalized);
+      }
+      if (!normalized.providerExecuted) {
+        seenToolCall = true;
+      }
+      return normalized;
+    }
+
+    if (part.type !== "finish") {
+      return part;
+    }
+
+    finalizeSummary();
+    if (
+      seenToolCall &&
+      shouldRewriteFinishReasonToToolCalls(part.finishReason)
+    ) {
+      return {
+        ...part,
+        finishReason: normalizeToolCallsFinishReason(part.finishReason),
+      };
+    }
+    return part;
+  };
+
   const outputStream = coreStream.pipeThrough(
     new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
       transform(part, controller) {
@@ -149,37 +262,14 @@ export async function wrapStream({
           });
         }
 
-        // Provider-executed tool calls pass through byte-identical and do not
-        // trigger the tool-calls finish rewrite: the provider already ran them.
-        let normalizedPart =
-          part.type === "tool-call" && !part.providerExecuted
-            ? coerceToolCallPart(part, tools)
-            : part;
-
-        if (
-          normalizedPart.type === "tool-call" &&
-          !normalizedPart.providerExecuted
-        ) {
-          seenToolCall = true;
-        }
-
-        if (
-          normalizedPart.type === "finish" &&
-          seenToolCall &&
-          shouldRewriteFinishReasonToToolCalls(normalizedPart.finishReason)
-        ) {
-          normalizedPart = {
-            ...normalizedPart,
-            finishReason: normalizeToolCallsFinishReason(
-              normalizedPart.finishReason
-            ),
-          };
-        }
-
+        const normalizedPart = normalizePart(part);
         if (debugLevel === "stream") {
           logParsedChunk(normalizedPart);
         }
         controller.enqueue(normalizedPart);
+      },
+      flush() {
+        finalizeSummary();
       },
     })
   );
@@ -219,6 +309,7 @@ export async function toolChoiceStream({
   expectedToolName,
   options,
   extraWarnings = [],
+  debugSummary,
 }: {
   doGenerate: () => ReturnType<LanguageModelV4["doGenerate"]>;
   expectedToolName?: string;
@@ -227,11 +318,17 @@ export async function toolChoiceStream({
     onError?: (message: string, metadata?: Record<string, unknown>) => void;
   };
   extraWarnings?: SharedV4Warning[];
+  debugSummary?: ToolCallMiddlewareDebugSummary;
 }) {
   const normalizedTools = Array.isArray(tools) ? tools : [];
   const result = await doGenerate();
-  const { toolName, input } = resolveToolChoiceSelection({
-    text: findToolChoiceResultText(result),
+  const firstText = findToolChoiceResultText(result);
+  if (typeof firstText === "string" && getDebugLevel() === "parse") {
+    logRawChunk(safeToolCallMetadataText(firstText) ?? "");
+  }
+
+  const { toolName, input, originText } = resolveToolChoiceSelection({
+    text: firstText,
     tools: normalizedTools,
     onError: options?.onError,
     errorMessage: "Failed to parse toolChoice JSON from streamed model output",
@@ -239,6 +336,18 @@ export async function toolChoiceStream({
   });
 
   const toolCallId = generateToolCallId();
+  const toolCall: LanguageModelV4ToolCall = {
+    type: "tool-call",
+    toolCallId,
+    toolName,
+    input,
+  };
+  recordForcedToolChoiceDebugSummary({
+    debugSummary,
+    originText,
+    toolCall,
+  });
+
   const stream = new ReadableStream<LanguageModelV4StreamPart>({
     start(controller) {
       controller.enqueue({
@@ -275,12 +384,7 @@ export async function toolChoiceStream({
         type: "tool-input-end",
         id: toolCallId,
       });
-      controller.enqueue({
-        type: "tool-call",
-        toolCallId,
-        toolName,
-        input,
-      });
+      controller.enqueue(toolCall);
       controller.enqueue({
         type: "finish",
         usage: normalizeUsage(result?.usage),

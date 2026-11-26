@@ -4,7 +4,7 @@ import {
   emitFinalRemainder,
   emitPrefixDelta,
   toIncompleteJsonPrefix,
-} from "../../../core/utils/streamed-tool-input-delta";
+} from "../../../core/utils/streaming/streamed-tool-input-delta";
 
 function createMockController(
   out: LanguageModelV4StreamPart[]

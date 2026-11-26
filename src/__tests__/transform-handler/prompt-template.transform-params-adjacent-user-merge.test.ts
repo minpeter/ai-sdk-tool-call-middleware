@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { formatToolResponseAsHermes } from "../../core/prompts/hermes-prompt";
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -31,8 +31,11 @@ describe("transformParams merges adjacent user messages", () => {
   it("merges two consecutive user messages into one with newline", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      placement: "first",
-      toolSystemPromptTemplate: (t) => `T:${t}`,
+      promptStrategy: {
+        mode: "text",
+        template: (t) => `T:${t}`,
+        placement: "first",
+      },
     });
 
     const transformParams = requireTransformParams(mw.transformParams);
@@ -58,9 +61,15 @@ describe("transformParams merges adjacent user messages", () => {
   it("condenses multiple tool_response messages into single user text content", async () => {
     const mw = createToolMiddleware({
       protocol: hermesProtocol,
-      placement: "first",
-      toolSystemPromptTemplate: (t) => `T:${t}`,
-      toolResponsePromptTemplate: formatToolResponseAsHermes,
+      promptStrategy: {
+        mode: "text",
+        template: (t) => `T:${t}`,
+        placement: "first",
+      },
+      historyStrategy: {
+        mode: "converted-text",
+        toolResponsePromptTemplate: formatToolResponseAsHermes,
+      },
     });
 
     const transformParams = requireTransformParams(mw.transformParams);

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { glm5Protocol } from "../../../core/protocols/glm5-protocol";
+import { glm5Protocol } from "../../../core/protocols/glm5/protocol";
 import { glm5Tools } from "./shared";
 
 const echoCall =

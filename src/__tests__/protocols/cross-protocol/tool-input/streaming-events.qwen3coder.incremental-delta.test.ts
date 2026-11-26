@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
   extractToolInputTimeline,
@@ -15,7 +15,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     return runProtocolTextDeltaStream({ protocol, tools, chunks });
   }
 
-  it("Qwen3CoderToolParser emits incremental deltas as parameters arrive in separate chunks", async () => {
+  it("qwen3CoderProtocol emits incremental deltas as parameters arrive in separate chunks", async () => {
     const out = await runQwenIncrementalStream([
       "<tool_call>\n<function=get_weather>\n<parameter=location>Seoul</parameter>",
       "\n<parameter=unit>celsius</parameter>\n</function>\n</tool_call>",
@@ -38,7 +38,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
-  it("Qwen3CoderToolParser emits incremental deltas for implicit call (no wrapper)", async () => {
+  it("qwen3CoderProtocol emits incremental deltas for implicit call (no wrapper)", async () => {
     const out = await runQwenIncrementalStream(
       [
         "<function=search>\n<parameter=query>hello</parameter>",
@@ -64,7 +64,7 @@ describe("cross-protocol tool-input streaming events: qwen3coder", () => {
     expect(deltas.map((delta) => delta.delta).join("")).toBe(toolCall.input);
   });
 
-  it("Qwen3CoderToolParser handles repeated parameter (array) across chunks gracefully", async () => {
+  it("qwen3CoderProtocol handles repeated parameter (array) across chunks gracefully", async () => {
     const out = await runQwenIncrementalStream(
       [
         "<tool_call>\n<function=multi>\n<parameter=tags>a</parameter>",

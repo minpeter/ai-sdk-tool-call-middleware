@@ -5,6 +5,11 @@ import type {
   LanguageModelV4ToolCall,
 } from "@ai-sdk/provider";
 
+export type {
+  ProtocolToolCallResolver,
+  ResolvedProtocolToolCall,
+} from "../../shared/tool-call-resolver";
+
 /**
  * Options for parsing tool calls and handling errors
  */
@@ -18,21 +23,12 @@ export interface ParserOptions {
   onError?: (message: string, metadata?: Record<string, unknown>) => void;
 }
 
-export type ResolvedProtocolToolCall =
-  | { ok: true; toolName: string; input: string }
-  | { ok: false; error: unknown };
-
-export type ProtocolToolCallResolver = (
-  toolCallJson: string,
-  tools: LanguageModelV4FunctionTool[]
-) => ResolvedProtocolToolCall;
-
 export interface TCMProtocol {
   /**
    * Return false when protocol parsing has terminally consumed this text and
-   * generic JSON recovery must not reinterpret its contents as tool calls.
+   * generic fallback recovery must not reinterpret its contents as tool calls.
    */
-  allowsGeneratedTextJsonRecovery?: (text: string) => boolean;
+  allowsFallbackRecovery?: (text: string) => boolean;
 
   createStreamParser: ({
     tools,
@@ -59,6 +55,18 @@ export interface TCMProtocol {
     toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
   }) => string;
 
+  /**
+   * Optional O(n) fast-path predicate returning true only when `text` is
+   * provably plain text containing neither protocol markup nor recoverable
+   * fallback tool-call candidates.
+   *
+   * `parseGeneratedText` always runs first (protocols may short-circuit
+   * internally with the same predicate); when `parseGeneratedText` emits no
+   * tool calls and this predicate returns true, generic fallback recovery is
+   * skipped.
+   */
+  isDefinitelyPlainGeneratedText?: (text: string) => boolean;
+
   parseGeneratedText: ({
     text,
     tools,
@@ -70,12 +78,8 @@ export interface TCMProtocol {
   }) => LanguageModelV4Content[];
 }
 
-export type TCMCoreProtocol = TCMProtocol;
-
 export function isProtocolFactory(
   protocol: TCMProtocol | (() => TCMProtocol)
 ): protocol is () => TCMProtocol {
   return typeof protocol === "function";
 }
-
-export const isTCMProtocolFactory = isProtocolFactory;

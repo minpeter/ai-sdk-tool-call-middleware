@@ -3,7 +3,7 @@ import {
   formatToolResponseAsQwen3CoderXml,
   qwen3coderSystemPromptTemplate,
 } from "../../core/prompts/qwen3coder-prompt";
-import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../core/protocols/qwen3coder/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 import { requireTransformParams } from "../test-helpers";
 
@@ -34,8 +34,14 @@ describe("qwen3coder chat-template alignment via existing transform pipeline", (
   it("keeps existing system text first, renders tools section, converts assistant tool-call markup, and maps tool messages to user <tool_response>", async () => {
     const mw = createToolMiddleware({
       protocol: qwen3CoderProtocol,
-      toolSystemPromptTemplate: qwen3coderSystemPromptTemplate,
-      toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
+      promptStrategy: {
+        mode: "text",
+        template: qwen3coderSystemPromptTemplate,
+      },
+      historyStrategy: {
+        mode: "converted-text",
+        toolResponsePromptTemplate: formatToolResponseAsQwen3CoderXml,
+      },
     });
 
     const transformParams = requireTransformParams(mw.transformParams);

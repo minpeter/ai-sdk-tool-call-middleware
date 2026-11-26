@@ -95,7 +95,7 @@ if [[ ! -d "$RUN_ROOT" || -L "$RUN_ROOT" ]]; then
   exit 1
 fi
 
-actual_parser_sha=$(sha256sum "$REPO/src/core/protocols/glm5-call-parsing.ts" | cut -d' ' -f1)
+actual_parser_sha=$(sha256sum "$REPO/src/core/protocols/glm5/call-parsing.ts" | cut -d' ' -f1)
 if [[ "$actual_parser_sha" != "$EXPECTED_PARSER_SHA" ]]; then
   echo "PARSER_SHA_GATE_FAIL expected=$EXPECTED_PARSER_SHA actual=$actual_parser_sha" >&2
   exit 1

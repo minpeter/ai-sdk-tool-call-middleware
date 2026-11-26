@@ -8,17 +8,12 @@ import {
   getSchemaType,
   unwrapJsonSchema,
 } from "../../schema-coerce";
+import { isPrototypeSensitiveKey } from "../../shared/prototype-keys";
 import type { RXMLNode } from "../core/types";
 import { RXMLCoercionError } from "../errors/types";
 
-const PROTOTYPE_SENSITIVE_XML_KEYS = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-
 function assertSafeXmlObjectKey(key: string): void {
-  if (PROTOTYPE_SENSITIVE_XML_KEYS.has(key)) {
+  if (isPrototypeSensitiveKey(key)) {
     throw new RXMLCoercionError(
       `RXML: Prototype-sensitive XML key "${key}" is not allowed.`
     );

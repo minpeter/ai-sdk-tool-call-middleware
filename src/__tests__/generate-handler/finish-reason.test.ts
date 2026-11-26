@@ -1,8 +1,8 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { wrapGenerate } from "../../generate-handler";
 import { mockFinishReason, zeroUsage } from "../test-helpers";
 
@@ -17,7 +17,7 @@ const tools: LanguageModelV4FunctionTool[] = [
   },
 ];
 
-const toolCallProtocol: TCMCoreProtocol = {
+const toolCallProtocol: TCMProtocol = {
   formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
   parseGeneratedText: ({ text }) =>
@@ -38,7 +38,7 @@ function makeParams() {
   return {
     providerOptions: {
       toolCallMiddleware: {
-        originalTools: originalToolsSchema.encode(tools),
+        _internal: { originalTools: originalToolsSchema.encode(tools) },
       },
     },
   };
@@ -56,7 +56,7 @@ function makeResult(text: string, finishReason: unknown) {
 describe("wrapGenerate finishReason parity with streaming", () => {
   it("skips debug segment extraction when debug output is disabled", async () => {
     const extractToolCallSegments = vi.fn(() => []);
-    const protocol: TCMCoreProtocol = {
+    const protocol: TCMProtocol = {
       ...toolCallProtocol,
       extractToolCallSegments,
     };
@@ -170,8 +170,10 @@ describe("wrapGenerate finishReason parity with streaming", () => {
       params: {
         providerOptions: {
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
-            toolChoice: { type: "required" },
+            _internal: {
+              originalTools: originalToolsSchema.encode(tools),
+              toolChoice: { type: "required" },
+            },
           },
         },
       },
@@ -188,7 +190,7 @@ describe("wrapGenerate finishReason parity with streaming", () => {
 describe("wrapGenerate toolChoice none passthrough", () => {
   it("returns the model result untouched without parsing", async () => {
     const parseSpy = vi.fn(() => []);
-    const spyProtocol: TCMCoreProtocol = {
+    const spyProtocol: TCMProtocol = {
       ...toolCallProtocol,
       parseGeneratedText: parseSpy,
     };
@@ -203,9 +205,7 @@ describe("wrapGenerate toolChoice none passthrough", () => {
       doGenerate,
       params: {
         providerOptions: {
-          toolCallMiddleware: {
-            toolChoice: { type: "none" },
-          },
+          toolCallMiddleware: { _internal: { toolChoice: { type: "none" } } },
         },
       },
     });

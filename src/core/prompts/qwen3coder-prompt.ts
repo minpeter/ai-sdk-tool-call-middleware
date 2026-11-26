@@ -3,14 +3,14 @@ import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import {
   escapeXmlMinimalAttr,
   escapeXmlMinimalText,
-} from "../../rxml/utils/helpers";
+} from "../../shared/xml-escape";
+import { formatToolResponseWithMedia } from "../utils/history/tool-response-with-media";
+import type { ToolResponseMediaStrategy } from "../utils/history/tool-result-normalizer";
+import type { ToolResponsePromptTemplateResult } from "../utils/history/tool-result-user-content";
 import {
   renderInputExamplesSection,
   safeStringifyInputExample,
 } from "./shared/input-examples";
-import { formatToolResponseWithMedia } from "./shared/tool-response-with-media";
-import type { ToolResponseMediaStrategy } from "./shared/tool-result-normalizer";
-import type { ToolResponsePromptTemplateResult } from "./shared/tool-result-user-content";
 
 const QWEN3CODER_TOOL_HEADER =
   "# Tools\n\nYou have access to the following functions:\n\n";

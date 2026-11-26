@@ -1,6 +1,6 @@
 import type { LanguageModelV4StreamPart } from "@ai-sdk/provider";
 
-import type { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import type { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 
 type MorphXmlTools = Parameters<
   ReturnType<typeof morphXmlProtocol>["createStreamParser"]
@@ -120,19 +120,19 @@ export const xmlTestCases = [
 
 export const qwen3CoderProtocolTestCases = [
   {
-    name: "simple Qwen3CoderToolParser tool call",
+    name: "simple qwen3CoderProtocol tool call",
     input:
       "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></function></tool_call>",
     expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
   },
   {
-    name: "Qwen3CoderToolParser tool call missing </function>",
+    name: "qwen3CoderProtocol tool call missing </function>",
     input:
       "<tool_call><function=get_weather><parameter=city>Tokyo</parameter></tool_call>",
     expectedTools: [{ toolName: "get_weather", input: { city: "Tokyo" } }],
   },
   {
-    name: "Qwen3CoderToolParser tool call with multiple params",
+    name: "qwen3CoderProtocol tool call with multiple params",
     input:
       "<tool_call><function=search><parameter=query>hello world</parameter><parameter=limit>10</parameter></function></tool_call>",
     expectedTools: [
@@ -140,7 +140,7 @@ export const qwen3CoderProtocolTestCases = [
     ],
   },
   {
-    name: "Qwen3CoderToolParser with surrounding text",
+    name: "qwen3CoderProtocol with surrounding text",
     input:
       "Checking... <tool_call><function=get_weather><parameter=city>NYC</parameter></function></tool_call> found!",
     expectedTools: [{ toolName: "get_weather", input: { city: "NYC" } }],
@@ -148,7 +148,7 @@ export const qwen3CoderProtocolTestCases = [
     expectedTextNotContains: ["<tool_call>", "</tool_call>"],
   },
   {
-    name: "Qwen3CoderToolParser multiple tool calls",
+    name: "qwen3CoderProtocol multiple tool calls",
     input:
       "<tool_call><function=a><parameter=x>1</parameter></function></tool_call> and <tool_call><function=b><parameter=y>2</parameter></function></tool_call>",
     expectedTools: [
@@ -159,7 +159,7 @@ export const qwen3CoderProtocolTestCases = [
     expectedTextNotContains: ["<tool_call>", "</tool_call>"],
   },
   {
-    name: "Qwen3CoderToolParser multiple calls inside one tool_call",
+    name: "qwen3CoderProtocol multiple calls inside one tool_call",
     input:
       "<tool_call><function=alpha><parameter=x>1</parameter></function><function=beta><parameter=y>2</parameter><parameter=y>3</parameter></function></tool_call>",
     expectedTools: [

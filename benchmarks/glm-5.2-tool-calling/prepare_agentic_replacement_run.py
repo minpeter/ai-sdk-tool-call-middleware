@@ -37,7 +37,7 @@ __all__ = (
 )
 
 
-PARSER_PATH: Final = Path("src/core/protocols/glm5-call-parsing.ts")
+PARSER_PATH: Final = Path("src/core/protocols/glm5/call-parsing.ts")
 EXPECTED_BRIDGE_PATHS: Final = frozenset(
     {
         "benchmarks/glm-5.2-tool-calling/src/benchmark-model-call.ts",

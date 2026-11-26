@@ -1,6 +1,6 @@
 import type { LanguageModelV4Content } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { assistantToolCallsToTextContent } from "../../../../core/prompts/shared/assistant-tool-calls-to-text";
+import { assistantToolCallsToTextContent } from "../../../../core/utils/history/assistant-tool-calls-to-text";
 
 describe("assistantToolCallsToTextContent", () => {
   it("converts assistant tool-call parts to formatted text and condenses when output is text-only", () => {

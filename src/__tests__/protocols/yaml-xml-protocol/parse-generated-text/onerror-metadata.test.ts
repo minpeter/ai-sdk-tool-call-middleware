@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml-protocol";
+import { yamlXmlProtocol } from "../../../../core/protocols/yaml-xml/protocol";
 import { basicTools } from "./shared";
 
 describe("yamlXmlProtocol parseGeneratedText onError metadata", () => {

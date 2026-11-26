@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 import {
   createChunkedStream,

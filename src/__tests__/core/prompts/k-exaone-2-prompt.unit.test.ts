@@ -1,11 +1,11 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import type { ToolResultPart } from "@ai-sdk/provider-utils";
 import { describe, expect, it } from "vitest";
-import { stringifyKExaone2NativeSchemaJson } from "../../../core/prompts/k-exaone-2-native-json";
 import {
   formatToolResponseAsKExaone2,
   kExaone2SystemPromptTemplate,
 } from "../../../core/prompts/k-exaone-2-prompt";
+import { stringifyKExaone2NativeSchemaJson } from "../../../core/utils/codecs/k-exaone-2-native-json";
 
 const tools: LanguageModelV4FunctionTool[] = [
   {

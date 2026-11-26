@@ -4,7 +4,7 @@ import type {
 } from "@ai-sdk/provider";
 import { convertReadableStreamToArray } from "@ai-sdk/provider-utils/test";
 import { describe, expect, it, vi } from "vitest";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import {
   pipeWithTransformer,
   stopFinishReason,
@@ -54,9 +54,7 @@ describe("qwen3CoderProtocol streaming onError metadata", () => {
     await convertReadableStreamToArray(pipeWithTransformer(rs, transformer));
 
     const resolveFail = onError.mock.calls.find(([message]) =>
-      String(message).includes(
-        "Could not resolve Qwen3CoderToolParser tool name"
-      )
+      String(message).includes("Could not resolve qwen3CoderProtocol tool name")
     );
     expect(resolveFail).toBeDefined();
     const metadata = resolveFail?.[1];

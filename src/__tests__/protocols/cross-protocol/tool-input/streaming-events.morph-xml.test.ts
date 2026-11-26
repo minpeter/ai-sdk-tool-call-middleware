@@ -3,7 +3,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 import { describe, expect, it } from "vitest";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 import { toolInputStreamFixtures } from "../../../fixtures/tool-input-stream-fixtures";
 import {
   createInterleavedStream,

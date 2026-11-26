@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { hermesProtocol } from "../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../core/protocols/hermes/protocol";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 describe("createToolMiddleware wrapGenerate protocol contract", () => {
   it("parses text content via protocol parseGeneratedText", async () => {
     const middleware = createToolMiddleware({
       protocol: hermesProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
 
     const doGenerate = vi.fn().mockResolvedValue({

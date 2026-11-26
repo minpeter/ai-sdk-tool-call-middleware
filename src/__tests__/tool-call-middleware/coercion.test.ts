@@ -1,8 +1,8 @@
 import type { LanguageModelV4FunctionTool } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
 
-import type { TCMCoreProtocol } from "../../core/protocols/protocol-interface";
-import { originalToolsSchema } from "../../core/utils/provider-options";
+import type { TCMProtocol } from "../../core/protocols/protocol-interface";
+import { originalToolsSchema } from "../../core/utils/transport/provider-options";
 import { createToolMiddleware } from "../../tool-call-middleware";
 
 vi.mock("@ai-sdk/provider-utils", () => ({
@@ -10,7 +10,7 @@ vi.mock("@ai-sdk/provider-utils", () => ({
 }));
 
 // Minimal protocol that emits a fixed XML-like payload but routes through middleware coercion
-const dummyProtocol: TCMCoreProtocol = {
+const dummyProtocol: TCMProtocol = {
   formatTools: ({ toolSystemPromptTemplate }) => toolSystemPromptTemplate([]),
   formatToolCall: () => "",
   parseGeneratedText: ({ tools }) => [
@@ -28,7 +28,7 @@ describe("tool-call-middleware coercion (utils)", () => {
   it("coerces using jsonSchema wrapper in tools via middleware", async () => {
     const middleware = createToolMiddleware({
       protocol: dummyProtocol,
-      toolSystemPromptTemplate: () => "",
+      promptStrategy: { mode: "text", template: () => "" },
     });
 
     const tools: LanguageModelV4FunctionTool[] = [
@@ -57,7 +57,7 @@ describe("tool-call-middleware coercion (utils)", () => {
           // INFO: Since this test does not go through the transform handler
           // that normally injects this, we need to provide it manually.
           toolCallMiddleware: {
-            originalTools: originalToolsSchema.encode(tools),
+            _internal: { originalTools: originalToolsSchema.encode(tools) },
           },
         },
       },

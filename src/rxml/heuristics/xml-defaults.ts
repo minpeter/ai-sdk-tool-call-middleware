@@ -3,8 +3,8 @@
  * Modular, reusable versions of normalization/repair logic from morph-xml-protocol.
  */
 
-import { escapeRegExp } from "../../core/utils/regex";
 import { unwrapJsonSchema } from "../../schema-coerce";
+import { escapeRegExp } from "../../shared/regex";
 import { parse } from "../core/parser";
 import type {
   HeuristicResult,

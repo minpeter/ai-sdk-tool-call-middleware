@@ -4,7 +4,7 @@ import type {
   LanguageModelV4StreamPart,
 } from "@ai-sdk/provider";
 
-import { glm5Protocol } from "../../../src/core/protocols/glm5-protocol";
+import { glm5Protocol } from "../../../src/core/protocols/glm5/protocol";
 import type { Glm5DecodedCall } from "./glm5-reference-decoders";
 
 export interface Glm5ProductionDecodeResult {

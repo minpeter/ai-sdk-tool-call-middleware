@@ -1,70 +1,72 @@
 import type {
   LanguageModelV4CallOptions,
-  LanguageModelV4FunctionTool,
   LanguageModelV4Middleware,
 } from "@ai-sdk/provider";
-import type { ToolResultPart } from "@ai-sdk/provider-utils";
-import type { ToolResponsePromptTemplateResult } from "./core/prompts/shared/tool-role-to-user-message";
-import type { TCMCoreProtocol } from "./core/protocols/protocol-interface";
-import { isTCMProtocolFactory } from "./core/protocols/protocol-interface";
+import {
+  isProtocolFactory,
+  type TCMProtocol,
+} from "./core/protocols/protocol-interface";
+import { stripToolCallMiddlewareProviderOptions } from "./core/utils/transport/provider-options";
 import { wrapGenerate as wrapGenerateHandler } from "./generate-handler";
 import { wrapStream as wrapStreamHandler } from "./stream-handler";
 import {
-  type ToolCallHistoryMode,
-  type ToolSystemPromptPlacement,
+  type ToolHistoryStrategy,
+  type ToolPromptStrategy,
   transformParams,
 } from "./transform-handler";
 
 export function createToolMiddleware({
   protocol,
-  toolSystemPromptTemplate,
-  toolResponsePromptTemplate,
-  placement = "last",
-  historyMode = "converted-text",
-  suppressToolSystemPromptForForcedChoice = false,
+  promptStrategy,
+  historyStrategy = { mode: "converted-text" },
 }: {
-  protocol: TCMCoreProtocol | (() => TCMCoreProtocol);
-  toolSystemPromptTemplate: (tools: LanguageModelV4FunctionTool[]) => string;
-  toolResponsePromptTemplate?: (
-    toolResult: ToolResultPart
-  ) => ToolResponsePromptTemplateResult;
-  placement?: ToolSystemPromptPlacement;
-  historyMode?: ToolCallHistoryMode;
-  /**
-   * Omit the protocol-specific tool catalog when `toolChoice` is `required` or
-   * selects a fixed tool. The forced-choice handlers request JSON through
-   * `responseFormat`, so protocols that instruct a different output grammar
-   * can opt out of issuing contradictory system instructions.
-   */
-  suppressToolSystemPromptForForcedChoice?: boolean;
+  protocol: TCMProtocol | (() => TCMProtocol);
+  promptStrategy: ToolPromptStrategy;
+  historyStrategy?: ToolHistoryStrategy;
 }): LanguageModelV4Middleware {
-  const resolvedProtocol = isTCMProtocolFactory(protocol)
-    ? protocol()
-    : protocol;
+  const resolvedProtocol = isProtocolFactory(protocol) ? protocol() : protocol;
 
   return {
     specificationVersion: "v4",
-    wrapStream: ({ doStream, doGenerate, params }) =>
-      wrapStreamHandler({
+    wrapStream: ({ doStream, doGenerate, params, model }) => {
+      const providerParams = stripToolCallMiddlewareProviderOptions(params);
+      // Only invoke `model` directly when stripping actually removed
+      // `toolCallMiddleware` so callers passing an instrumented thunk without
+      // middleware options are not bypassed. When stripping does occur,
+      // `model.doStream`/`model.doGenerate` receives the sanitized params
+      // directly (bypassing custom wrapper thunks; under `wrapLanguageModel`,
+      // `model` already wraps any inner middlewares).
+      const didStrip = providerParams !== params;
+      return wrapStreamHandler({
         protocol: resolvedProtocol,
-        doStream,
-        doGenerate,
+        doStream:
+          didStrip && typeof model?.doStream === "function"
+            ? () => model.doStream(providerParams)
+            : doStream,
+        doGenerate:
+          didStrip && typeof model?.doGenerate === "function"
+            ? () => model.doGenerate(providerParams)
+            : doGenerate,
         params,
-      }),
-    wrapGenerate: async ({ doGenerate, params }) =>
-      wrapGenerateHandler({
+      });
+    },
+    wrapGenerate: ({ doGenerate, params, model }) => {
+      const providerParams = stripToolCallMiddlewareProviderOptions(params);
+      const didStrip = providerParams !== params;
+      return wrapGenerateHandler({
         protocol: resolvedProtocol,
-        doGenerate,
+        doGenerate:
+          didStrip && typeof model?.doGenerate === "function"
+            ? () => model.doGenerate(providerParams)
+            : doGenerate,
         params,
-      }),
+      });
+    },
     transformParams: async ({ params }): Promise<LanguageModelV4CallOptions> =>
       transformParams({
         protocol: resolvedProtocol,
-        toolSystemPromptTemplate,
-        toolResponsePromptTemplate,
-        placement,
-        historyMode,
-        suppressToolSystemPromptForForcedChoice,
+        promptStrategy,
+        historyStrategy,
         params,
       }),
   };

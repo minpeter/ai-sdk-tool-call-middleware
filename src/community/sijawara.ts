@@ -10,7 +10,7 @@ import {
 } from "../core/prompts/shared/xml-tag-name";
 import { createToolMiddleware, morphXmlProtocol } from "../index";
 import { stringify } from "../rxml";
-import { escapeXmlMinimalText } from "../rxml/utils/helpers";
+import { escapeXmlMinimalText } from "../shared/xml-escape";
 
 function hasInvalidXmlKeys(value: unknown): boolean {
   if (Array.isArray(value)) {
@@ -28,10 +28,15 @@ function hasInvalidXmlKeys(value: unknown): boolean {
 
 export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
-  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-  toolSystemPromptTemplate(tools: LanguageModelV4FunctionTool[]) {
-    const toolsJson = JSON.stringify(tools);
-    const basePrompt = `You have access to callable functions (tools).
+  historyStrategy: {
+    mode: "converted-text",
+    toolResponsePromptTemplate: morphFormatToolResponseAsXml,
+  },
+  promptStrategy: {
+    mode: "text",
+    template(tools: LanguageModelV4FunctionTool[]) {
+      const toolsJson = JSON.stringify(tools);
+      const basePrompt = `You have access to callable functions (tools).
     Tool list/context:
     ${toolsJson}
 
@@ -83,21 +88,27 @@ export const sijawaraDetailedXmlToolMiddleware = createToolMiddleware({
     - Do NOT use JSON—use only the specified XML-like format for tool calls.
     - If no call is needed, reply without a tool call.`;
 
-    const inputExamplesText = renderSijawaraInputExamples(tools);
-    if (inputExamplesText.length === 0) {
-      return basePrompt;
-    }
+      const inputExamplesText = renderSijawaraInputExamples(tools);
+      if (inputExamplesText.length === 0) {
+        return basePrompt;
+      }
 
-    return `${basePrompt}\n\n${inputExamplesText}`;
+      return `${basePrompt}\n\n${inputExamplesText}`;
+    },
   },
 });
 
 export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
   protocol: morphXmlProtocol,
-  toolResponsePromptTemplate: morphFormatToolResponseAsXml,
-  toolSystemPromptTemplate(tools: LanguageModelV4FunctionTool[]) {
-    const toolsJson = JSON.stringify(tools);
-    const basePrompt = `You have access to callable functions (tools).
+  historyStrategy: {
+    mode: "converted-text",
+    toolResponsePromptTemplate: morphFormatToolResponseAsXml,
+  },
+  promptStrategy: {
+    mode: "text",
+    template(tools: LanguageModelV4FunctionTool[]) {
+      const toolsJson = JSON.stringify(tools);
+      const basePrompt = `You have access to callable functions (tools).
     Tool list/context:
     ${toolsJson}
 
@@ -124,12 +135,13 @@ export const sijawaraConciseXmlToolMiddleware = createToolMiddleware({
       </location>
     </get_weather>`;
 
-    const inputExamplesText = renderSijawaraInputExamples(tools);
-    if (inputExamplesText.length === 0) {
-      return basePrompt;
-    }
+      const inputExamplesText = renderSijawaraInputExamples(tools);
+      if (inputExamplesText.length === 0) {
+        return basePrompt;
+      }
 
-    return `${basePrompt}\n\n${inputExamplesText}`;
+      return `${basePrompt}\n\n${inputExamplesText}`;
+    },
   },
 });
 

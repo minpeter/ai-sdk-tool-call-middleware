@@ -16,7 +16,7 @@ PINNED_COMMIT = "56dd66cf6439b0d9655ee1b353e4cd745c6f664e"
 PINNED_TASK_SET_SHA256 = (
     "3967082cc1ed8e4a532ae290f099947241d6fe12e23e08f10c7109f5d7f01b74"
 )
-PARSER_PATH = Path("src/core/protocols/glm5-call-parsing.ts")
+PARSER_PATH = Path("src/core/protocols/glm5/call-parsing.ts")
 EXPECTED_RUNNER_PATHS = {
     "benchmarks/glm-5.2-tool-calling/acebench_official_native.py",
     "benchmarks/glm-5.2-tool-calling/acebench_one_row_preflight.py",

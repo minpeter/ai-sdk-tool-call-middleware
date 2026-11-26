@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
-import { morphXmlProtocol } from "../../../../core/protocols/morph-xml-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
+import { morphXmlProtocol } from "../../../../core/protocols/morph-xml/protocol";
 
 describe("protocol formatters", () => {
   it("hermesProtocol formatToolCall and formatTools", () => {

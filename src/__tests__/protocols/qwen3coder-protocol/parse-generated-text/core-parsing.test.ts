@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder-protocol";
+import { qwen3CoderProtocol } from "../../../../core/protocols/qwen3coder/protocol";
 import { emptyFunctionTools } from "../../../fixtures/function-tools";
 
 describe("qwen3CoderProtocol", () => {

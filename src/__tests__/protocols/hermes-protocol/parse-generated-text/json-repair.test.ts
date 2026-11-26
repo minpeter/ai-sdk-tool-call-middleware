@@ -4,7 +4,7 @@ import type {
   LanguageModelV4FunctionTool,
 } from "@ai-sdk/provider";
 import { describe, expect, it, vi } from "vitest";
-import { hermesProtocol } from "../../../../core/protocols/hermes-protocol";
+import { hermesProtocol } from "../../../../core/protocols/hermes/protocol";
 
 function makeTool(
   name: string,
